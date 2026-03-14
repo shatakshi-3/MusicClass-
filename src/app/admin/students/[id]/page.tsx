@@ -1,10 +1,26 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import FeeStatusBadge from '@/components/FeeStatusBadge';
+import StudentForm from '@/components/StudentForm';
 import { ProfileSkeleton } from '@/components/LoadingSkeleton';
-import type { Student } from '@/lib/mockData';
+import type { Student, MonthlyFeePayment, ExamRegistration, Instrument, Centre, PaymentStatus } from '@/lib/types';
+
+interface PaymentRow extends MonthlyFeePayment {
+  student_name: string;
+  student_phone: string;
+  student_instrument: Instrument;
+  student_centre: Centre;
+}
+
+interface ExamRow extends ExamRegistration {
+  student_name: string;
+  student_phone: string;
+  student_instrument: Instrument;
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 export default function StudentProfilePage() {
   const params = useParams();
@@ -12,73 +28,64 @@ export default function StudentProfilePage() {
   const studentId = params.id as string;
 
   const [student, setStudent] = useState<Student | null>(null);
+  const [payments, setPayments] = useState<PaymentRow[]>([]);
+  const [exams, setExams] = useState<ExamRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState('');
+  const [showEdit, setShowEdit] = useState(false);
+  const [deactivating, setDeactivating] = useState(false);
 
-  // Editable fields
-  const [examCentre, setExamCentre] = useState('');
-  const [feeStatus, setFeeStatus] = useState<'Paid' | 'Due'>('Due');
-  const [lastFeePaid, setLastFeePaid] = useState('');
-  const [notes, setNotes] = useState('');
-
-  useEffect(() => {
-    fetch('/api/students')
-      .then((res) => res.json())
-      .then((data) => {
-        const found = (data.students || []).find((s: Student) => s.phone === studentId);
-        if (found) {
-          setStudent(found);
-          setExamCentre(found.examCentre);
-          setFeeStatus(found.feeStatus);
-          setLastFeePaid(found.lastFeePaid);
-          setNotes(found.notes);
-        }
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
+  const fetchStudent = useCallback(() => {
+    setLoading(true);
+    Promise.all([
+      fetch(`/api/students/${studentId}`).then(r => r.json()),
+      fetch('/api/fees/monthly').then(r => r.json()),
+      fetch('/api/exams/registrations').then(r => r.json()),
+    ]).then(([studentData, feeData, examData]) => {
+      setStudent(studentData.student || null);
+      setPayments((feeData.payments || []).filter((p: PaymentRow) => p.student_id === studentId));
+      setExams((examData.registrations || []).filter((e: ExamRow) => e.student_id === studentId));
+      setLoading(false);
+    }).catch(() => setLoading(false));
   }, [studentId]);
 
-  const handleSave = async () => {
-    if (!student) return;
-    setSaving(true);
-    setError('');
-    setSaved(false);
+  useEffect(() => { fetchStudent(); }, [fetchStudent]);
 
+  const handleEdit = async (data: Partial<Student>) => {
+    const res = await fetch(`/api/students/${studentId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Failed to update');
+    setShowEdit(false);
+    fetchStudent();
+  };
+
+  const handleDeactivate = async () => {
+    if (!confirm('Are you sure you want to deactivate this student?')) return;
+    setDeactivating(true);
     try {
-      const res = await fetch('/api/student-update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          phone: student.phone,
-          examCentre,
-          feeStatus,
-          lastFeePaid,
-          notes,
-        }),
-      });
-
-      if (!res.ok) {
-        const data = await res.json();
-        setError(data.error || 'Failed to save');
-      } else {
-        setSaved(true);
-        setTimeout(() => setSaved(false), 3000);
-      }
+      await fetch(`/api/students/${studentId}`, { method: 'DELETE' });
+      router.push('/admin/students');
     } catch {
-      setError('Network error');
-    } finally {
-      setSaving(false);
+      setDeactivating(false);
     }
+  };
+
+  const handlePaymentUpdate = async (paymentId: string, status: PaymentStatus) => {
+    await fetch(`/api/fees/monthly/${paymentId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    });
+    fetchStudent();
   };
 
   if (loading) {
     return (
       <div>
-        <div className="page-header">
-          <h2 className="page-title">Student Profile</h2>
-        </div>
+        <div className="page-header"><h2 className="page-title">Student Profile</h2></div>
         <ProfileSkeleton />
       </div>
     );
@@ -87,10 +94,7 @@ export default function StudentProfilePage() {
   if (!student) {
     return (
       <div>
-        <div className="page-header">
-          <h2 className="page-title">Student Not Found</h2>
-          <p className="page-subtitle">No student found with phone number {studentId}</p>
-        </div>
+        <div className="page-header"><h2 className="page-title">Student Not Found</h2></div>
         <button onClick={() => router.back()} className="btn-secondary">← Go Back</button>
       </div>
     );
@@ -100,17 +104,24 @@ export default function StudentProfilePage() {
     <div>
       <div className="page-header">
         <div className="profile-header-top">
-          <button onClick={() => router.back()} className="btn-back">
-            ← Back
-          </button>
-          <FeeStatusBadge status={student.feeStatus} />
+          <button onClick={() => router.back()} className="btn-back">← Back</button>
+          <div className="profile-header-actions">
+            <button onClick={() => setShowEdit(true)} className="btn-secondary">Edit</button>
+            {student.status === 'active' && (
+              <button onClick={handleDeactivate} disabled={deactivating} className="btn-danger">
+                {deactivating ? 'Deactivating...' : 'Deactivate'}
+              </button>
+            )}
+          </div>
         </div>
         <h2 className="page-title">{student.name}</h2>
-        <p className="page-subtitle">Student Profile</p>
+        <p className="page-subtitle">
+          <FeeStatusBadge status={student.status === 'active' ? 'Active' : 'Inactive'} />
+        </p>
       </div>
 
       <div className="profile-grid">
-        {/* Student Details - Read Only */}
+        {/* Student Details */}
         <div className="profile-card">
           <h3 className="profile-card-title">Student Information</h3>
           <div className="profile-details">
@@ -127,90 +138,118 @@ export default function StudentProfilePage() {
               <span className="profile-value">{student.age} years</span>
             </div>
             <div className="profile-detail">
-              <span className="profile-label">Parent Name</span>
-              <span className="profile-value">{student.parentName}</span>
+              <span className="profile-label">Parent/Guardian</span>
+              <span className="profile-value">{student.parents_name}</span>
             </div>
             <div className="profile-detail">
-              <span className="profile-label">Course Interest</span>
-              <span className="profile-value">{student.course}</span>
+              <span className="profile-label">Instrument</span>
+              <span className="profile-value">{student.instrument}</span>
+            </div>
+            <div className="profile-detail">
+              <span className="profile-label">Centre</span>
+              <span className="profile-value">
+                <span className={`centre-badge ${student.centre === 'Centre A' ? 'centre-badge-a' : 'centre-badge-b'}`}>
+                  {student.centre}
+                </span>
+              </span>
             </div>
             <div className="profile-detail">
               <span className="profile-label">Class Timing</span>
-              <span className="profile-value">{student.classTiming}</span>
+              <span className="profile-value">{student.class_timing}</span>
+            </div>
+            <div className="profile-detail">
+              <span className="profile-label">Enrolled On</span>
+              <span className="profile-value">{new Date(student.created_at).toLocaleDateString('en-IN')}</span>
             </div>
           </div>
         </div>
 
-        {/* Editable Fields */}
+        {/* Monthly Fees */}
         <div className="profile-card">
-          <h3 className="profile-card-title">Admin Settings</h3>
-
-          {error && (
-            <div className="profile-error">{error}</div>
+          <h3 className="profile-card-title">Monthly Fee History</h3>
+          {payments.length === 0 ? (
+            <p className="empty-text">No payment records yet</p>
+          ) : (
+            <div className="table-container">
+              <table className="data-table compact-table">
+                <thead>
+                  <tr>
+                    <th>Month</th>
+                    <th>Amount</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {payments
+                    .sort((a, b) => b.year - a.year || b.month - a.month)
+                    .map(p => (
+                      <tr key={p.id}>
+                        <td>{MONTHS[p.month - 1]} {p.year}</td>
+                        <td className="table-cell-mono">₹{p.amount.toLocaleString('en-IN')}</td>
+                        <td>
+                          <select
+                            value={p.status}
+                            onChange={e => handlePaymentUpdate(p.id, e.target.value as PaymentStatus)}
+                            className={`inline-status-select status-${p.status.toLowerCase()}`}
+                          >
+                            <option value="Paid">Paid</option>
+                            <option value="Pending">Pending</option>
+                            <option value="Late">Late</option>
+                            <option value="Waived">Waived</option>
+                          </select>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
           )}
-          {saved && (
-            <div className="profile-success">✓ Changes saved successfully</div>
-          )}
-
-          <div className="profile-form">
-            <div className="form-group">
-              <label className="form-label">Exam Centre</label>
-              <select
-                value={examCentre}
-                onChange={(e) => setExamCentre(e.target.value)}
-                className="form-select"
-              >
-                <option value="Centre A">Centre A</option>
-                <option value="Centre B">Centre B</option>
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Fee Status</label>
-              <select
-                value={feeStatus}
-                onChange={(e) => setFeeStatus(e.target.value as 'Paid' | 'Due')}
-                className="form-select"
-              >
-                <option value="Paid">Paid</option>
-                <option value="Due">Due</option>
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Last Fee Month Paid</label>
-              <input
-                type="text"
-                value={lastFeePaid}
-                onChange={(e) => setLastFeePaid(e.target.value)}
-                placeholder="e.g. March 2026"
-                className="form-input"
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Notes</label>
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Add notes about this student..."
-                className="form-textarea"
-                rows={4}
-                maxLength={500}
-              />
-              <span className="form-hint">{notes.length}/500 characters</span>
-            </div>
-
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="btn-primary"
-            >
-              {saving ? 'Saving...' : 'Save Changes'}
-            </button>
-          </div>
         </div>
       </div>
+
+      {/* Exam Registrations */}
+      <div className="profile-card" style={{ marginTop: '20px' }}>
+        <h3 className="profile-card-title">Exam Registrations</h3>
+        {exams.length === 0 ? (
+          <p className="empty-text">Not registered for any exams</p>
+        ) : (
+          <div className="table-container">
+            <table className="data-table compact-table">
+              <thead>
+                <tr>
+                  <th>Exam Year</th>
+                  <th>Centre</th>
+                  <th>Fee</th>
+                  <th>Payment</th>
+                </tr>
+              </thead>
+              <tbody>
+                {exams.map(e => (
+                  <tr key={e.id}>
+                    <td>Year {e.exam_year}</td>
+                    <td>
+                      <span className={`centre-badge ${e.centre === 'Centre A' ? 'centre-badge-a' : 'centre-badge-b'}`}>
+                        {e.centre}
+                      </span>
+                    </td>
+                    <td className="table-cell-mono">₹{e.exam_fee.toLocaleString('en-IN')}</td>
+                    <td><FeeStatusBadge status={e.payment_status} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {showEdit && (
+        <StudentForm
+          student={student}
+          mode="edit"
+          onSave={handleEdit}
+          onCancel={() => setShowEdit(false)}
+        />
+      )}
     </div>
   );
 }
