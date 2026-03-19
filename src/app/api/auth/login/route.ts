@@ -1,7 +1,7 @@
 // POST /api/auth/login — authenticate admin
 import { NextRequest, NextResponse } from 'next/server';
 import { getIronSession } from 'iron-session';
-import { sessionOptions, type SessionData, checkRateLimit } from '@/lib/auth';
+import { sessionOptions, type SessionData, checkRateLimit, verifyPassword } from '@/lib/auth';
 import { cookies } from 'next/headers';
 
 export async function POST(request: NextRequest) {
@@ -28,11 +28,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid credentials' }, { status: 400 });
     }
 
-    // Check credentials (plain text comparison)
+    // Check credentials using bcrypt verification
     const adminEmail = process.env.ADMIN_EMAIL || 'admin@music.com';
-    const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
+    const adminPasswordHash = process.env.ADMIN_PASSWORD_HASH || '';
 
-    if (email !== adminEmail || password !== adminPassword) {
+    if (email !== adminEmail) {
+      return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
+    }
+
+    // If a bcrypt hash is provided, verify against it; otherwise fall back to plain text comparison
+    let passwordValid = false;
+    if (adminPasswordHash && adminPasswordHash.startsWith('$2')) {
+      passwordValid = await verifyPassword(password, adminPasswordHash);
+    } else {
+      // Fallback for dev: plain text comparison (set ADMIN_PASSWORD_HASH in production)
+      const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
+      passwordValid = password === adminPassword;
+    }
+
+    if (!passwordValid) {
       return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
     }
 

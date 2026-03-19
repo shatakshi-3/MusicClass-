@@ -34,6 +34,7 @@ export default function FeesPage() {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [genMessage, setGenMessage] = useState('');
+  const [noRecords, setNoRecords] = useState(false);
 
   const fetchPayments = useCallback(() => {
     setLoading(true);
@@ -47,12 +48,18 @@ export default function FeesPage() {
     fetch(`/api/fees/monthly?${params}`)
       .then(r => r.json())
       .then(data => {
-        setPayments(data.payments || []);
+        const paymentList = data.payments || [];
+        setPayments(paymentList);
         setTotals({
           total: data.totalAmount || 0,
           paid: data.paidAmount || 0,
           pending: data.pendingAmount || 0,
         });
+        // Detect if no records exist for current month (with no filters)
+        const nowDate = new Date();
+        const isCurrentMonth = month === nowDate.getMonth() + 1 && year === nowDate.getFullYear();
+        const hasNoFilters = centreFilter === 'all' && instrumentFilter === 'all' && statusFilter === 'all';
+        setNoRecords(paymentList.length === 0 && isCurrentMonth && hasNoFilters);
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -104,6 +111,15 @@ export default function FeesPage() {
       </div>
 
       {genMessage && <div className="alert-info">{genMessage}</div>}
+
+      {!loading && noRecords && !genMessage && (
+        <div className="auto-gen-warning">
+          <span>⚠️ No fee records found for this month. Generate records to start tracking payments.</span>
+          <button onClick={handleGenerate} disabled={generating}>
+            {generating ? 'Generating...' : 'Generate Now'}
+          </button>
+        </div>
+      )}
 
       {/* Stats */}
       <div className="stat-grid stat-grid-3">

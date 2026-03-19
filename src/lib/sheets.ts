@@ -1,185 +1,188 @@
-// Google Sheets integration using service account
-import { google } from 'googleapis';
-import { cache } from './cache';
-import { mockStudents, type Student } from './mockData';
+// Google Sheets CSV fetcher — 100% free, no API keys needed
+// Reads from a published Google Sheet CSV URL
 
-const CACHE_KEY = 'all_students';
+import { INSTRUMENTS, CENTRES, type Instrument, type Centre } from './types';
 
-// Column mapping for the Google Sheet (0-indexed)
-const COLUMNS = {
-  name: 0,
-  phone: 1,
-  age: 2,
-  parentName: 3,
-  course: 4,
-  classTiming: 5,
-  examCentre: 6,
-  notes: 7,
-  feeStatus: 8,
-  lastFeePaid: 9,
-};
+const SHEET_CSV_URL = process.env.GOOGLE_SHEET_CSV_URL || '';
 
-function getSheetClient() {
-  const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-  const key = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n');
-  const sheetId = process.env.GOOGLE_SHEET_ID;
+interface FormRow {
+  name: string;
+  phone: string;
+  age: number;
+  parents_name: string;
+  instrument: string;
+  centre: string;
+  class_timing: string;
+  timestamp: string;
+}
 
-  if (!email || !key || !sheetId) {
-    return null;
+/**
+ * Parse a CSV line handling quoted fields (Google Sheets may quote fields with commas)
+ */
+function parseCSVLine(line: string): string[] {
+  const result: string[] = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (char === '"') {
+      if (inQuotes && i + 1 < line.length && line[i + 1] === '"') {
+        current += '"';
+        i++; // skip escaped quote
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === ',' && !inQuotes) {
+      result.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  result.push(current.trim());
+  return result;
+}
+
+/**
+ * Maps a raw instrument value from the form to a valid Instrument type
+ */
+function mapInstrument(raw: string): Instrument | null {
+  const cleaned = raw.trim();
+  // Exact match first
+  const found = INSTRUMENTS.find(
+    (i) => i.toLowerCase() === cleaned.toLowerCase()
+  );
+  return found || null;
+}
+
+/**
+ * Maps a raw centre value from the form to a valid Centre type
+ */
+function mapCentre(raw: string): Centre | null {
+  const cleaned = raw.trim();
+  const found = CENTRES.find(
+    (c) => c.toLowerCase() === cleaned.toLowerCase()
+  );
+  return found || null;
+}
+
+export interface ParsedFormEntry {
+  name: string;
+  phone: string;
+  age: number;
+  parents_name: string;
+  instrument: Instrument;
+  centre: Centre;
+  class_timing: string;
+}
+
+export interface SyncError {
+  row: number;
+  reason: string;
+  data?: string;
+}
+
+/**
+ * Fetch and parse all form responses from the published Google Sheet CSV.
+ *
+ * Expected column order (matches the recommended Google Form):
+ *   0: Timestamp
+ *   1: Student Name
+ *   2: Phone Number
+ *   3: Age
+ *   4: Parent/Guardian Name
+ *   5: Instrument
+ *   6: Centre
+ *   7: Class Timing
+ */
+export async function fetchFormResponses(): Promise<{
+  entries: ParsedFormEntry[];
+  errors: SyncError[];
+}> {
+  if (!SHEET_CSV_URL) {
+    throw new Error('GOOGLE_SHEET_CSV_URL is not configured');
   }
 
-  const auth = new google.auth.JWT({
-    email,
-    key,
-    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+  const response = await fetch(SHEET_CSV_URL, {
+    cache: 'no-store', // Always get fresh data
   });
 
-  return { sheets: google.sheets({ version: 'v4', auth }), sheetId };
-}
-
-function rowToStudent(row: string[], rowIndex: number): Student {
-  return {
-    id: row[COLUMNS.phone] || String(rowIndex),
-    name: row[COLUMNS.name] || '',
-    phone: row[COLUMNS.phone] || '',
-    age: parseInt(row[COLUMNS.age]) || 0,
-    parentName: row[COLUMNS.parentName] || '',
-    course: row[COLUMNS.course] || '',
-    classTiming: row[COLUMNS.classTiming] || '',
-    examCentre: row[COLUMNS.examCentre] || '',
-    notes: row[COLUMNS.notes] || '',
-    feeStatus: (row[COLUMNS.feeStatus] as 'Paid' | 'Due') || 'Due',
-    lastFeePaid: row[COLUMNS.lastFeePaid] || '',
-  };
-}
-
-export async function getStudents(): Promise<Student[]> {
-  // Check cache first
-  const cached = cache.get<Student[]>(CACHE_KEY);
-  if (cached) return cached;
-
-  const client = getSheetClient();
-
-  // Fallback to mock data if no credentials
-  if (!client) {
-    console.log('[Sheets] No credentials configured — using mock data');
-    cache.set(CACHE_KEY, mockStudents);
-    return mockStudents;
+  if (!response.ok) {
+    throw new Error(`Failed to fetch sheet: ${response.status} ${response.statusText}`);
   }
 
-  try {
-    const response = await client.sheets.spreadsheets.values.get({
-      spreadsheetId: client.sheetId,
-      range: 'Sheet1!A2:J', // Skip header row
-    });
+  const csvText = await response.text();
+  const lines = csvText.split('\n').filter((line) => line.trim().length > 0);
 
-    const rows = response.data.values || [];
-    const students = rows.map((row, idx) => rowToStudent(row as string[], idx + 2));
-
-    // Deduplicate by phone number (keep last entry)
-    const phoneMap = new Map<string, Student>();
-    for (const s of students) {
-      if (s.phone) phoneMap.set(s.phone, s);
-    }
-    const deduped = Array.from(phoneMap.values());
-
-    cache.set(CACHE_KEY, deduped);
-    return deduped;
-  } catch (error) {
-    console.error('[Sheets] Error fetching students:', error);
-    // Fallback to mock on error
-    return mockStudents;
+  if (lines.length < 2) {
+    return { entries: [], errors: [] }; // Only header or empty
   }
-}
 
-export async function findRowByPhone(phone: string): Promise<number | null> {
-  const client = getSheetClient();
-  if (!client) return null;
+  const entries: ParsedFormEntry[] = [];
+  const errors: SyncError[] = [];
 
-  try {
-    const response = await client.sheets.spreadsheets.values.get({
-      spreadsheetId: client.sheetId,
-      range: 'Sheet1!B2:B', // Phone column
-    });
+  // Skip header row (index 0), process data rows
+  for (let i = 1; i < lines.length; i++) {
+    const cols = parseCSVLine(lines[i]);
+    const rowNum = i + 1; // human-readable row number
 
-    const rows = response.data.values || [];
-    for (let i = 0; i < rows.length; i++) {
-      if (rows[i][0] === phone) {
-        return i + 2; // 1-indexed, skip header
+    try {
+      // Extract fields (Timestamp is col 0, data starts at col 1)
+      const name = (cols[1] || '').trim();
+      const phone = (cols[2] || '').trim().replace(/\D/g, '').slice(-10);
+      const ageRaw = parseInt(cols[3] || '');
+      const parents_name = (cols[4] || '').trim();
+      const instrumentRaw = (cols[5] || '').trim();
+      const centreRaw = (cols[6] || '').trim();
+      const class_timing = (cols[7] || '').trim();
+
+      // Validate required fields
+      if (!name || name.length < 2) {
+        errors.push({ row: rowNum, reason: 'Missing or invalid name', data: name });
+        continue;
       }
+      if (!phone || !/^\d{10}$/.test(phone)) {
+        errors.push({ row: rowNum, reason: 'Invalid phone number (need 10 digits)', data: phone });
+        continue;
+      }
+      if (isNaN(ageRaw) || ageRaw < 3 || ageRaw > 80) {
+        errors.push({ row: rowNum, reason: 'Invalid age', data: cols[3] });
+        continue;
+      }
+
+      const instrument = mapInstrument(instrumentRaw);
+      if (!instrument) {
+        errors.push({ row: rowNum, reason: `Unknown instrument: "${instrumentRaw}"`, data: instrumentRaw });
+        continue;
+      }
+
+      const centre = mapCentre(centreRaw);
+      if (!centre) {
+        errors.push({ row: rowNum, reason: `Unknown centre: "${centreRaw}"`, data: centreRaw });
+        continue;
+      }
+
+      entries.push({
+        name,
+        phone,
+        age: ageRaw,
+        parents_name: parents_name || name, // fallback if parent name empty
+        instrument,
+        centre,
+        class_timing: class_timing || 'TBD',
+      });
+    } catch {
+      errors.push({ row: rowNum, reason: 'Failed to parse row' });
     }
-    return null;
-  } catch (error) {
-    console.error('[Sheets] Error finding row:', error);
-    return null;
   }
+
+  return { entries, errors };
 }
 
-export async function updateStudentRow(
-  phone: string,
-  updates: Partial<Pick<Student, 'examCentre' | 'feeStatus' | 'lastFeePaid' | 'notes'>>
-): Promise<boolean> {
-  const client = getSheetClient();
-
-  // Update mock data in dev mode
-  if (!client) {
-    const idx = mockStudents.findIndex((s) => s.phone === phone);
-    if (idx === -1) return false;
-    if (updates.examCentre !== undefined) mockStudents[idx].examCentre = updates.examCentre;
-    if (updates.feeStatus !== undefined) mockStudents[idx].feeStatus = updates.feeStatus;
-    if (updates.lastFeePaid !== undefined) mockStudents[idx].lastFeePaid = updates.lastFeePaid;
-    if (updates.notes !== undefined) mockStudents[idx].notes = updates.notes;
-    cache.invalidate(CACHE_KEY);
-    return true;
-  }
-
-  try {
-    const rowIndex = await findRowByPhone(phone);
-    if (!rowIndex) return false;
-
-    // Build batch update
-    const data: { range: string; values: string[][] }[] = [];
-    const colLetter = (col: number) => String.fromCharCode(65 + col);
-
-    if (updates.examCentre !== undefined) {
-      data.push({
-        range: `Sheet1!${colLetter(COLUMNS.examCentre)}${rowIndex}`,
-        values: [[updates.examCentre]],
-      });
-    }
-    if (updates.notes !== undefined) {
-      data.push({
-        range: `Sheet1!${colLetter(COLUMNS.notes)}${rowIndex}`,
-        values: [[updates.notes]],
-      });
-    }
-    if (updates.feeStatus !== undefined) {
-      data.push({
-        range: `Sheet1!${colLetter(COLUMNS.feeStatus)}${rowIndex}`,
-        values: [[updates.feeStatus]],
-      });
-    }
-    if (updates.lastFeePaid !== undefined) {
-      data.push({
-        range: `Sheet1!${colLetter(COLUMNS.lastFeePaid)}${rowIndex}`,
-        values: [[updates.lastFeePaid]],
-      });
-    }
-
-    if (data.length > 0) {
-      await client.sheets.spreadsheets.values.batchUpdate({
-        spreadsheetId: client.sheetId,
-        requestBody: {
-          valueInputOption: 'USER_ENTERED',
-          data,
-        },
-      });
-    }
-
-    cache.invalidate(CACHE_KEY);
-    return true;
-  } catch (error) {
-    console.error('[Sheets] Error updating row:', error);
-    return false;
-  }
+/**
+ * Check if Google Sheet CSV URL is configured
+ */
+export function isSheetConfigured(): boolean {
+  return !!SHEET_CSV_URL;
 }

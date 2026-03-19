@@ -1,7 +1,7 @@
 // GET /api/students — list students with filters
 // POST /api/students — create new student
 import { NextRequest, NextResponse } from 'next/server';
-import { getStudents, createStudent, getFeeForInstrument } from '@/lib/db';
+import { getStudents, createStudent, getFeeForInstrument, generateMonthlyPayments } from '@/lib/db';
 import { INSTRUMENTS, CENTRES, type Instrument, type Centre, type StudentStatus } from '@/lib/types';
 
 export async function GET(request: NextRequest) {
@@ -73,9 +73,14 @@ export async function POST(request: NextRequest) {
 
     const monthlyFee = getFeeForInstrument(instrument);
 
+    // Auto-create monthly payment record for current month
+    const now = new Date();
+    generateMonthlyPayments(now.getMonth() + 1, now.getFullYear());
+
     return NextResponse.json({ student, monthlyFee }, { status: 201 });
   } catch (error) {
     console.error('[API] Error creating student:', error);
     return NextResponse.json({ error: 'Failed to create student' }, { status: 500 });
   }
 }
+

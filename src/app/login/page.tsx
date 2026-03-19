@@ -110,7 +110,7 @@ export default function LoginPage() {
         </form>
 
         <div className="login-footer">
-          <p>Default: admin@music.com / admin123</p>
+          <p>Music Class Admin Panel</p>
         </div>
       </div>
     </div>

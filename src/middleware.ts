@@ -46,7 +46,7 @@ export const config = {
   matcher: [
     '/admin/:path*',
     '/api/students/:path*',
-    '/api/student-update/:path*',
+    '/api/sync/:path*',
     '/api/fees/:path*',
     '/api/exams/:path*',
     '/api/dashboard',
