@@ -659,6 +659,42 @@
       "class_timing": "Sun 11:00 AM",
       "created_at": "2025-10-19T15:09:51.619Z",
       "status": "active"
+    },
+    {
+      "name": "In10SE",
+      "phone": "7209210027",
+      "age": 22,
+      "parents_name": "Unkown",
+      "instrument": "Vocal",
+      "centre": "Centre A",
+      "class_timing": "5:00-6:00",
+      "status": "inactive",
+      "id": "mmxgnkpz49zlw39",
+      "created_at": "2026-03-19T12:42:59.111Z"
+    },
+    {
+      "name": "Muhehehe",
+      "phone": "9693490137",
+      "age": 22,
+      "parents_name": "You never know",
+      "instrument": "Guitar",
+      "centre": "Centre B",
+      "class_timing": "Tue/Thus/Sat 7:00 PM",
+      "status": "inactive",
+      "id": "mmxh13mvjtpxaxe",
+      "created_at": "2026-03-19T12:53:30.151Z"
+    },
+    {
+      "name": "Roki",
+      "phone": "7200665577",
+      "age": 22,
+      "parents_name": "You never know",
+      "instrument": "Guitar",
+      "centre": "Centre B",
+      "class_timing": "Tue/Thus/Sat 7:00 PM",
+      "status": "active",
+      "id": "mmxheb4rw0yzr71",
+      "created_at": "2026-03-19T13:03:46.395Z"
     }
   ],
   "instrument_fees": [
@@ -2124,6 +2160,33 @@
       "amount": 1200,
       "status": "Pending",
       "updated_at": "2026-03-19T11:06:52.062Z"
+    },
+    {
+      "id": "mmxgnkq2n17vljr",
+      "student_id": "mmxgnkpz49zlw39",
+      "month": 3,
+      "year": 2026,
+      "amount": 900,
+      "status": "Pending",
+      "updated_at": "2026-03-19T12:42:59.114Z"
+    },
+    {
+      "id": "mmxh13mwfxmsrpt",
+      "student_id": "mmxh13mvjtpxaxe",
+      "month": 3,
+      "year": 2026,
+      "amount": 1200,
+      "status": "Pending",
+      "updated_at": "2026-03-19T12:53:30.152Z"
+    },
+    {
+      "id": "mmxheb4vbma2rfi",
+      "student_id": "mmxheb4rw0yzr71",
+      "month": 3,
+      "year": 2026,
+      "amount": 1200,
+      "status": "Pending",
+      "updated_at": "2026-03-19T13:03:46.399Z"
     }
   ],
   "exam_fee_structure": [
