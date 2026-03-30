@@ -5,8 +5,8 @@ import { useParams, useRouter } from 'next/navigation';
 import FeeStatusBadge from '@/components/FeeStatusBadge';
 import StudentForm from '@/components/StudentForm';
 import { ProfileSkeleton } from '@/components/LoadingSkeleton';
-import type { Student, FeePayment, ExamRegistration, Instrument, Centre, PaymentStatus, PaymentType } from '@/lib/types';
-import { PAYMENT_TYPES } from '@/lib/types';
+import type { Student, FeePayment, ExamRegistration, Instrument, Centre, PaymentStatus, PaymentLabel } from '@/lib/types';
+import { PAYMENT_LABELS, PAYMENT_STATUSES } from '@/lib/types';
 
 interface PaymentRow extends FeePayment {
   student_name: string;
@@ -20,8 +20,6 @@ interface ExamRow extends ExamRegistration {
   student_phone: string;
   student_instrument: Instrument;
 }
-
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 export default function StudentProfilePage() {
   const params = useParams();
@@ -139,8 +137,8 @@ export default function StudentProfilePage() {
               <span className="profile-value">{student.age} years</span>
             </div>
             <div className="profile-detail">
-              <span className="profile-label">Payment Plan</span>
-              <span className="profile-value">{student.payment_plan || 'MONTHLY'}</span>
+              <span className="profile-label">Payment Type</span>
+              <span className="profile-value">{student.payment_type || 'REGULAR'}</span>
             </div>
             <div className="profile-detail">
               <span className="profile-label">Parent/Guardian</span>
@@ -169,9 +167,9 @@ export default function StudentProfilePage() {
           </div>
         </div>
 
-        {/* Monthly Fees */}
+        {/* Fee History */}
         <div className="profile-card">
-          <h3 className="profile-card-title">Monthly Fee History</h3>
+          <h3 className="profile-card-title">Payment History</h3>
           {payments.length === 0 ? (
             <p className="empty-text">No payment records yet</p>
           ) : (
@@ -179,8 +177,9 @@ export default function StudentProfilePage() {
               <table className="data-table compact-table">
                 <thead>
                   <tr>
-                    <th>Period / Date</th>
+                    <th>Date</th>
                     <th>Type</th>
+                    <th>Label</th>
                     <th>Amount</th>
                     <th>Status</th>
                   </tr>
@@ -190,16 +189,17 @@ export default function StudentProfilePage() {
                     .sort((a, b) => new Date(b.payment_date).getTime() - new Date(a.payment_date).getTime())
                     .map(p => (
                       <tr key={p.id}>
-                        <td>{p.period_start || new Date(p.payment_date).toLocaleDateString()}</td>
+                        <td>{new Date(p.payment_date).toLocaleDateString('en-IN')}</td>
                         <td>
                           <select
                             value={p.payment_type}
-                            onChange={e => handlePaymentUpdate(p.id, { payment_type: e.target.value as PaymentType })}
+                            onChange={e => handlePaymentUpdate(p.id, { payment_type: e.target.value as PaymentLabel })}
                             className="inline-status-select"
                           >
-                            {PAYMENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                            {PAYMENT_LABELS.map(t => <option key={t} value={t}>{t}</option>)}
                           </select>
                         </td>
+                        <td style={{ color: '#64748b', fontSize: '13px' }}>{p.period_label || '—'}</td>
                         <td className="table-cell-mono">₹{p.amount.toLocaleString('en-IN')}</td>
                         <td>
                           <select
@@ -207,10 +207,7 @@ export default function StudentProfilePage() {
                             onChange={e => handlePaymentUpdate(p.id, { status: e.target.value as PaymentStatus })}
                             className={`inline-status-select status-${p.status.toLowerCase()}`}
                           >
-                            <option value="Paid">Paid</option>
-                            <option value="Pending">Pending</option>
-                            <option value="Late">Late</option>
-                            <option value="Waived">Waived</option>
+                            {PAYMENT_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
                           </select>
                         </td>
                       </tr>

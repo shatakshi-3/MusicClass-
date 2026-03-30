@@ -1,8 +1,8 @@
 // GET /api/students — list students with filters
 // POST /api/students — create new student
 import { NextRequest, NextResponse } from 'next/server';
-import { getStudents, createStudent, getFeeForInstrument, generateExpectedPayments } from '@/lib/db';
-import { INSTRUMENTS, CENTRES, PAYMENT_PLANS, type Instrument, type Centre, type StudentStatus, type PaymentPlan } from '@/lib/types';
+import { getStudents, createStudent, getFeeForInstrument } from '@/lib/db';
+import { INSTRUMENTS, CENTRES, PAYMENT_BEHAVIORS, type Instrument, type Centre, type StudentStatus, type PaymentBehavior } from '@/lib/types';
 
 export async function GET(request: NextRequest) {
   try {
@@ -29,9 +29,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, phone, age, parents_name, instrument, centre, class_timing, payment_plan } = body;
+    const { name, phone, age, parents_name, instrument, centre, class_timing, payment_type } = body;
 
-    // Validate required fields
     if (!name || typeof name !== 'string' || name.trim().length < 2) {
       return NextResponse.json({ error: 'Valid name is required (min 2 chars)' }, { status: 400 });
     }
@@ -53,8 +52,8 @@ export async function POST(request: NextRequest) {
     if (!class_timing || typeof class_timing !== 'string') {
       return NextResponse.json({ error: 'Class timing is required' }, { status: 400 });
     }
-    if (!payment_plan || !PAYMENT_PLANS.includes(payment_plan)) {
-      return NextResponse.json({ error: 'Valid payment plan is required' }, { status: 400 });
+    if (!payment_type || !PAYMENT_BEHAVIORS.includes(payment_type)) {
+      return NextResponse.json({ error: 'Valid payment type is required' }, { status: 400 });
     }
 
     // Check for duplicate phone
@@ -71,15 +70,11 @@ export async function POST(request: NextRequest) {
       instrument,
       centre,
       class_timing: class_timing.trim(),
-      payment_plan: payment_plan as PaymentPlan,
+      payment_type: payment_type as PaymentBehavior,
       status: 'active',
     });
 
     const monthlyFee = getFeeForInstrument(instrument);
-
-    // Auto-create monthly payment record for current month
-    const now = new Date();
-    generateExpectedPayments(now.getMonth() + 1, now.getFullYear());
 
     return NextResponse.json({ student, monthlyFee }, { status: 201 });
   } catch (error) {
@@ -87,4 +82,3 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to create student' }, { status: 500 });
   }
 }
-

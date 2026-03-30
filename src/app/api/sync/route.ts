@@ -1,11 +1,10 @@
 // POST /api/sync — sync students from Google Form responses
 import { NextResponse } from 'next/server';
 import { fetchFormResponses, isSheetConfigured } from '@/lib/sheets';
-import { getStudents, createStudent, generateExpectedPayments } from '@/lib/db';
+import { getStudents, createStudent } from '@/lib/db';
 
 export async function POST() {
   try {
-    // Check if configured
     if (!isSheetConfigured()) {
       return NextResponse.json(
         {
@@ -16,7 +15,6 @@ export async function POST() {
       );
     }
 
-    // Fetch form responses
     const { entries, errors: parseErrors } = await fetchFormResponses();
 
     if (entries.length === 0 && parseErrors.length === 0) {
@@ -28,7 +26,6 @@ export async function POST() {
       });
     }
 
-    // Get existing students to dedup by phone
     const existingStudents = getStudents();
     const existingPhones = new Set(existingStudents.map((s) => s.phone));
 
@@ -37,7 +34,6 @@ export async function POST() {
     const importErrors: string[] = [];
 
     for (const entry of entries) {
-      // Skip if phone already exists
       if (existingPhones.has(entry.phone)) {
         skipped++;
         continue;
@@ -52,23 +48,17 @@ export async function POST() {
           instrument: entry.instrument,
           centre: entry.centre,
           class_timing: entry.class_timing,
+          payment_type: 'REGULAR',
           status: 'active',
         });
 
-        existingPhones.add(entry.phone); // Prevent duplicates within the same sync
+        existingPhones.add(entry.phone);
         imported++;
       } catch (err) {
         importErrors.push(`Failed to create ${entry.name}: ${err instanceof Error ? err.message : 'Unknown error'}`);
       }
     }
 
-    // Auto-generate monthly payment records for newly imported students
-    if (imported > 0) {
-      const now = new Date();
-      generateExpectedPayments(now.getMonth() + 1, now.getFullYear());
-    }
-
-    // Build message
     const parts: string[] = [];
     if (imported > 0) parts.push(`${imported} new student${imported > 1 ? 's' : ''} imported`);
     if (skipped > 0) parts.push(`${skipped} already existed`);

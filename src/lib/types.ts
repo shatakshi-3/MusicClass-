@@ -11,14 +11,14 @@ export type Instrument = (typeof INSTRUMENTS)[number];
 export const STUDENT_STATUSES = ['active', 'inactive'] as const;
 export type StudentStatus = (typeof STUDENT_STATUSES)[number];
 
-export const PAYMENT_STATUSES = ['Paid', 'Pending', 'Late', 'Waived'] as const;
+export const PAYMENT_STATUSES = ['Paid', 'Pending'] as const;
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 
-export const PAYMENT_PLANS = ['MONTHLY', 'QUARTERLY', 'CUSTOM'] as const;
-export type PaymentPlan = (typeof PAYMENT_PLANS)[number];
+export const PAYMENT_BEHAVIORS = ['REGULAR', 'OCCASIONAL', 'FLEXIBLE'] as const;
+export type PaymentBehavior = (typeof PAYMENT_BEHAVIORS)[number];
 
-export const PAYMENT_TYPES = ['Monthly', 'Quarterly', 'Custom'] as const;
-export type PaymentType = (typeof PAYMENT_TYPES)[number];
+export const PAYMENT_LABELS = ['Regular', 'Occasional', 'Flexible'] as const;
+export type PaymentLabel = (typeof PAYMENT_LABELS)[number];
 
 export const EXAM_PAYMENT_STATUSES = ['Paid', 'Pending'] as const;
 export type ExamPaymentStatus = (typeof EXAM_PAYMENT_STATUSES)[number];
@@ -39,7 +39,7 @@ export interface Student {
   instrument: Instrument;
   centre: Centre;
   class_timing: string;
-  payment_plan?: PaymentPlan;
+  payment_type?: PaymentBehavior;
   created_at: string;
   status: StudentStatus;
 }
@@ -55,9 +55,8 @@ export interface FeePayment {
   student_id: string;
   amount: number;
   payment_date: string;
-  payment_type: PaymentType;
-  period_start?: string;
-  period_end?: string;
+  payment_type: PaymentLabel;
+  period_label?: string;
   status: PaymentStatus;
   notes?: string;
   updated_at: string;
@@ -101,8 +100,10 @@ export interface DashboardStats {
   studentsByCentre: Record<string, number>;
   studentsByInstrument: Record<string, number>;
   studentsInExams: number;
-  monthlyFeesCollected: number;
-  monthlyFeesPending: number;
+  totalCollected: number;
+  last30DaysCollected: number;
+  studentsNoPay30Days: number;
+  avgPaymentPerStudent: number;
   examFeesCollected: number;
   examFeesPending: number;
 }

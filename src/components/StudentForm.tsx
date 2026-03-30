@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import type { Student, Instrument, Centre, PaymentPlan } from '@/lib/types';
-import { INSTRUMENTS, CENTRES, PAYMENT_PLANS } from '@/lib/types';
+import type { Student, Instrument, Centre, PaymentBehavior } from '@/lib/types';
+import { INSTRUMENTS, CENTRES, PAYMENT_BEHAVIORS } from '@/lib/types';
 
 interface StudentFormProps {
   student?: Student;
@@ -25,7 +25,7 @@ export default function StudentForm({ student, onSave, onCancel, mode }: Student
   const [instrument, setInstrument] = useState<Instrument>(student?.instrument || 'Guitar');
   const [centre, setCentre] = useState<Centre>(student?.centre || 'Prayag Sangeet Samiti');
   const [class_timing, setClassTiming] = useState(student?.class_timing || CLASS_TIMINGS[0]);
-  const [payment_plan, setPaymentPlan] = useState<PaymentPlan>(student?.payment_plan || 'MONTHLY');
+  const [payment_type, setPaymentType] = useState<PaymentBehavior>(student?.payment_type || 'REGULAR');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -43,7 +43,7 @@ export default function StudentForm({ student, onSave, onCancel, mode }: Student
         instrument,
         centre,
         class_timing,
-        payment_plan
+        payment_type,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save');
@@ -158,15 +158,15 @@ export default function StudentForm({ student, onSave, onCancel, mode }: Student
                 ))}
               </select>
             </div>
-            
+
             <div className="form-group">
-              <label className="form-label">Payment Plan *</label>
+              <label className="form-label">Payment Type *</label>
               <select
-                value={payment_plan}
-                onChange={e => setPaymentPlan(e.target.value as PaymentPlan)}
+                value={payment_type}
+                onChange={e => setPaymentType(e.target.value as PaymentBehavior)}
                 className="form-select"
               >
-                {PAYMENT_PLANS.map(p => (
+                {PAYMENT_BEHAVIORS.map(p => (
                   <option key={p} value={p}>{p}</option>
                 ))}
               </select>

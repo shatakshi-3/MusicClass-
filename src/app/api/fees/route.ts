@@ -1,13 +1,14 @@
 // GET /api/fees — fee payments with filters
+// POST /api/fees — record a new payment
 import { NextRequest, NextResponse } from 'next/server';
 import { getFeePayments, createFeePayment, getStudentById } from '@/lib/db';
-import type { Centre, Instrument, PaymentStatus, PaymentType } from '@/lib/types';
+import type { Centre, Instrument, PaymentStatus, PaymentLabel } from '@/lib/types';
 
 export async function GET(request: NextRequest) {
   try {
     const url = request.nextUrl;
     const student_id = url.searchParams.get('student_id') || undefined;
-    const payment_type = url.searchParams.get('payment_type') as PaymentType | null;
+    const payment_type = url.searchParams.get('payment_type') as PaymentLabel | null;
     const centre = url.searchParams.get('centre') as Centre | null;
     const instrument = url.searchParams.get('instrument') as Instrument | null;
     const status = url.searchParams.get('status') as PaymentStatus | null;
@@ -34,7 +35,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { student_id, amount, payment_date, payment_type, period_start, period_end, status, notes } = body;
+    const { student_id, amount, payment_date, payment_type, period_label, status, notes } = body;
 
     if (!student_id || amount === undefined || amount < 0 || !payment_date || !payment_type || !status) {
       return NextResponse.json({ error: 'Missing required fields or invalid amount' }, { status: 400 });
@@ -50,8 +51,7 @@ export async function POST(request: NextRequest) {
       amount: Number(amount),
       payment_date,
       payment_type,
-      period_start,
-      period_end,
+      period_label: period_label || undefined,
       status,
       notes
     });
