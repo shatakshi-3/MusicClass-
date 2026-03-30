@@ -1,6 +1,6 @@
-// POST /api/fees/monthly/generate — generate monthly payment records
+// POST /api/fees/generate — generate expected monthly/quarterly payment records
 import { NextRequest, NextResponse } from 'next/server';
-import { generateMonthlyPayments } from '@/lib/db';
+import { generateExpectedPayments } from '@/lib/db';
 
 export async function POST(request: NextRequest) {
   try {
@@ -14,14 +14,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Valid year (2020-2050) required' }, { status: 400 });
     }
 
-    const count = generateMonthlyPayments(month, year);
+    const count = generateExpectedPayments(month, year);
 
     return NextResponse.json({
       success: true,
       generated: count,
       message: count > 0
-        ? `Generated payment records for ${count} student${count > 1 ? 's' : ''}`
-        : 'All active students already have records for this month',
+        ? `Generated expected payment records for ${count} student${count > 1 ? 's' : ''}`
+        : 'All relevant students already have expected records for this period',
     });
   } catch (error) {
     console.error('[API] Error generating payments:', error);

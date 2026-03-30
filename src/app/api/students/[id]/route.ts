@@ -1,7 +1,7 @@
 // GET/PUT/DELETE /api/students/[id]
 import { NextRequest, NextResponse } from 'next/server';
 import { getStudentById, updateStudent, deleteStudent } from '@/lib/db';
-import { INSTRUMENTS, CENTRES } from '@/lib/types';
+import { INSTRUMENTS, CENTRES, PAYMENT_PLANS } from '@/lib/types';
 
 export async function GET(
   _request: NextRequest,
@@ -64,6 +64,12 @@ export async function PUT(
     }
     if (body.class_timing !== undefined) {
       updates.class_timing = String(body.class_timing).trim();
+    }
+    if (body.payment_plan !== undefined) {
+      if (!PAYMENT_PLANS.includes(body.payment_plan)) {
+        return NextResponse.json({ error: 'Invalid payment plan' }, { status: 400 });
+      }
+      updates.payment_plan = body.payment_plan;
     }
     if (body.status !== undefined) {
       if (!['active', 'inactive'].includes(body.status)) {

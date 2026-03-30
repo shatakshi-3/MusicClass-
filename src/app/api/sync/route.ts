@@ -1,7 +1,7 @@
 // POST /api/sync — sync students from Google Form responses
 import { NextResponse } from 'next/server';
 import { fetchFormResponses, isSheetConfigured } from '@/lib/sheets';
-import { getStudents, createStudent, generateMonthlyPayments } from '@/lib/db';
+import { getStudents, createStudent, generateExpectedPayments } from '@/lib/db';
 
 export async function POST() {
   try {
@@ -65,7 +65,7 @@ export async function POST() {
     // Auto-generate monthly payment records for newly imported students
     if (imported > 0) {
       const now = new Date();
-      generateMonthlyPayments(now.getMonth() + 1, now.getFullYear());
+      generateExpectedPayments(now.getMonth() + 1, now.getFullYear());
     }
 
     // Build message

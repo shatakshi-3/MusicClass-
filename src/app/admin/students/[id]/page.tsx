@@ -5,9 +5,10 @@ import { useParams, useRouter } from 'next/navigation';
 import FeeStatusBadge from '@/components/FeeStatusBadge';
 import StudentForm from '@/components/StudentForm';
 import { ProfileSkeleton } from '@/components/LoadingSkeleton';
-import type { Student, MonthlyFeePayment, ExamRegistration, Instrument, Centre, PaymentStatus } from '@/lib/types';
+import type { Student, FeePayment, ExamRegistration, Instrument, Centre, PaymentStatus, PaymentType } from '@/lib/types';
+import { PAYMENT_TYPES } from '@/lib/types';
 
-interface PaymentRow extends MonthlyFeePayment {
+interface PaymentRow extends FeePayment {
   student_name: string;
   student_phone: string;
   student_instrument: Instrument;
@@ -38,7 +39,7 @@ export default function StudentProfilePage() {
     setLoading(true);
     Promise.all([
       fetch(`/api/students/${studentId}`).then(r => r.json()),
-      fetch('/api/fees/monthly').then(r => r.json()),
+      fetch('/api/fees').then(r => r.json()),
       fetch('/api/exams/registrations').then(r => r.json()),
     ]).then(([studentData, feeData, examData]) => {
       setStudent(studentData.student || null);
@@ -73,11 +74,11 @@ export default function StudentProfilePage() {
     }
   };
 
-  const handlePaymentUpdate = async (paymentId: string, status: PaymentStatus) => {
-    await fetch(`/api/fees/monthly/${paymentId}`, {
+  const handlePaymentUpdate = async (paymentId: string, updates: Partial<FeePayment>) => {
+    await fetch(`/api/fees/${paymentId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status }),
+      body: JSON.stringify(updates),
     });
     fetchStudent();
   };
@@ -138,6 +139,10 @@ export default function StudentProfilePage() {
               <span className="profile-value">{student.age} years</span>
             </div>
             <div className="profile-detail">
+              <span className="profile-label">Payment Plan</span>
+              <span className="profile-value">{student.payment_plan || 'MONTHLY'}</span>
+            </div>
+            <div className="profile-detail">
               <span className="profile-label">Parent/Guardian</span>
               <span className="profile-value">{student.parents_name}</span>
             </div>
@@ -174,22 +179,32 @@ export default function StudentProfilePage() {
               <table className="data-table compact-table">
                 <thead>
                   <tr>
-                    <th>Month</th>
+                    <th>Period / Date</th>
+                    <th>Type</th>
                     <th>Amount</th>
                     <th>Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {payments
-                    .sort((a, b) => b.year - a.year || b.month - a.month)
+                    .sort((a, b) => new Date(b.payment_date).getTime() - new Date(a.payment_date).getTime())
                     .map(p => (
                       <tr key={p.id}>
-                        <td>{MONTHS[p.month - 1]} {p.year}</td>
+                        <td>{p.period_start || new Date(p.payment_date).toLocaleDateString()}</td>
+                        <td>
+                          <select
+                            value={p.payment_type}
+                            onChange={e => handlePaymentUpdate(p.id, { payment_type: e.target.value as PaymentType })}
+                            className="inline-status-select"
+                          >
+                            {PAYMENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                          </select>
+                        </td>
                         <td className="table-cell-mono">₹{p.amount.toLocaleString('en-IN')}</td>
                         <td>
                           <select
                             value={p.status}
-                            onChange={e => handlePaymentUpdate(p.id, e.target.value as PaymentStatus)}
+                            onChange={e => handlePaymentUpdate(p.id, { status: e.target.value as PaymentStatus })}
                             className={`inline-status-select status-${p.status.toLowerCase()}`}
                           >
                             <option value="Paid">Paid</option>

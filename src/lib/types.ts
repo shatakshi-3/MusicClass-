@@ -14,6 +14,12 @@ export type StudentStatus = (typeof STUDENT_STATUSES)[number];
 export const PAYMENT_STATUSES = ['Paid', 'Pending', 'Late', 'Waived'] as const;
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 
+export const PAYMENT_PLANS = ['MONTHLY', 'QUARTERLY', 'CUSTOM'] as const;
+export type PaymentPlan = (typeof PAYMENT_PLANS)[number];
+
+export const PAYMENT_TYPES = ['Monthly', 'Quarterly', 'Custom'] as const;
+export type PaymentType = (typeof PAYMENT_TYPES)[number];
+
 export const EXAM_PAYMENT_STATUSES = ['Paid', 'Pending'] as const;
 export type ExamPaymentStatus = (typeof EXAM_PAYMENT_STATUSES)[number];
 
@@ -33,6 +39,7 @@ export interface Student {
   instrument: Instrument;
   centre: Centre;
   class_timing: string;
+  payment_plan?: PaymentPlan;
   created_at: string;
   status: StudentStatus;
 }
@@ -43,14 +50,18 @@ export interface InstrumentFee {
   monthly_fee: number;
 }
 
-export interface MonthlyFeePayment {
+export interface FeePayment {
   id: string;
   student_id: string;
-  month: number;    // 1-12
-  year: number;
   amount: number;
+  payment_date: string;
+  payment_type: PaymentType;
+  period_start?: string;
+  period_end?: string;
   status: PaymentStatus;
+  notes?: string;
   updated_at: string;
+  created_at?: string;
 }
 
 export interface ExamFeeStructure {
@@ -76,7 +87,7 @@ export interface ExamRegistration {
 export interface Database {
   students: Student[];
   instrument_fees: InstrumentFee[];
-  monthly_fee_payments: MonthlyFeePayment[];
+  fee_payments: FeePayment[];
   exam_fee_structure: ExamFeeStructure[];
   exam_registrations: ExamRegistration[];
 }

@@ -1,8 +1,8 @@
 // GET /api/students — list students with filters
 // POST /api/students — create new student
 import { NextRequest, NextResponse } from 'next/server';
-import { getStudents, createStudent, getFeeForInstrument, generateMonthlyPayments } from '@/lib/db';
-import { INSTRUMENTS, CENTRES, type Instrument, type Centre, type StudentStatus } from '@/lib/types';
+import { getStudents, createStudent, getFeeForInstrument, generateExpectedPayments } from '@/lib/db';
+import { INSTRUMENTS, CENTRES, PAYMENT_PLANS, type Instrument, type Centre, type StudentStatus, type PaymentPlan } from '@/lib/types';
 
 export async function GET(request: NextRequest) {
   try {
@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, phone, age, parents_name, instrument, centre, class_timing } = body;
+    const { name, phone, age, parents_name, instrument, centre, class_timing, payment_plan } = body;
 
     // Validate required fields
     if (!name || typeof name !== 'string' || name.trim().length < 2) {
@@ -53,6 +53,9 @@ export async function POST(request: NextRequest) {
     if (!class_timing || typeof class_timing !== 'string') {
       return NextResponse.json({ error: 'Class timing is required' }, { status: 400 });
     }
+    if (!payment_plan || !PAYMENT_PLANS.includes(payment_plan)) {
+      return NextResponse.json({ error: 'Valid payment plan is required' }, { status: 400 });
+    }
 
     // Check for duplicate phone
     const existing = getStudents({ search: phone });
@@ -68,6 +71,7 @@ export async function POST(request: NextRequest) {
       instrument,
       centre,
       class_timing: class_timing.trim(),
+      payment_plan: payment_plan as PaymentPlan,
       status: 'active',
     });
 
@@ -75,7 +79,7 @@ export async function POST(request: NextRequest) {
 
     // Auto-create monthly payment record for current month
     const now = new Date();
-    generateMonthlyPayments(now.getMonth() + 1, now.getFullYear());
+    generateExpectedPayments(now.getMonth() + 1, now.getFullYear());
 
     return NextResponse.json({ student, monthlyFee }, { status: 201 });
   } catch (error) {

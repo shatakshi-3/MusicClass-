@@ -5,9 +5,9 @@ import fs from 'fs';
 import path from 'path';
 import { cache } from './cache';
 import type {
-  Database, Student, InstrumentFee, MonthlyFeePayment,
+  Database, Student, InstrumentFee, FeePayment,
   ExamFeeStructure, ExamRegistration, DashboardStats,
-  Instrument, Centre, PaymentStatus, ExamPaymentStatus, ExamYear, StudentStatus,
+  Instrument, Centre, PaymentStatus, ExamPaymentStatus, PaymentType, PaymentPlan, ExamYear, StudentStatus,
 } from './types';
 import { INSTRUMENTS, CENTRES, EXAM_YEARS } from './types';
 
@@ -27,9 +27,29 @@ function readDB(): Database {
   const raw = fs.readFileSync(DB_PATH, 'utf-8');
   const db = JSON.parse(raw) as Database;
 
-  // Migration logic for Centre names
+  // Migration logic for Centre names & Fee System
   let migrated = false;
+  
+  if ((db as any).monthly_fee_payments) {
+    db.fee_payments = (db as any).monthly_fee_payments.map((p: any) => ({
+      id: p.id,
+      student_id: p.student_id,
+      amount: p.amount,
+      payment_date: new Date(p.year, p.month - 1, 1).toISOString(),
+      payment_type: 'Monthly',
+      period_start: `${p.year}-${String(p.month).padStart(2, '0')}`,
+      status: p.status,
+      updated_at: p.updated_at,
+      created_at: p.updated_at || new Date().toISOString()
+    }));
+    delete (db as any).monthly_fee_payments;
+    migrated = true;
+  }
+  if (!db.fee_payments) db.fee_payments = [];
+
   db.students.forEach(s => {
+    if (!s.payment_plan) { s.payment_plan = 'MONTHLY'; migrated = true; }
+
     if ((s.centre as string) === 'Centre A') { s.centre = 'Prayag Sangeet Samiti' as Centre; migrated = true; }
     if ((s.centre as string) === 'Centre B') { s.centre = 'Khairagarh University' as Centre; migrated = true; }
   });
@@ -116,6 +136,7 @@ function createSeedData(): Database {
       instrument: pick(INSTRUMENTS),
       centre: pick(CENTRES),
       class_timing: pick(timings),
+      payment_plan: Math.random() > 0.8 ? 'QUARTERLY' : (Math.random() > 0.9 ? 'CUSTOM' : 'MONTHLY'),
       created_at: new Date(Date.now() - Math.floor(Math.random() * 180 * 86400000)).toISOString(),
       status: Math.random() > 0.1 ? 'active' : 'inactive',
     });
@@ -123,7 +144,7 @@ function createSeedData(): Database {
 
   // Generate monthly payments for current and previous 2 months
   const now = new Date();
-  const monthlyPayments: MonthlyFeePayment[] = [];
+    const feePayments: FeePayment[] = [];
   const paymentStatuses: PaymentStatus[] = ['Paid', 'Pending', 'Late', 'Waived'];
 
   for (let offset = 0; offset < 3; offset++) {
@@ -132,19 +153,27 @@ function createSeedData(): Database {
     const y = d.getFullYear();
 
     for (const s of students) {
-      if (s.status !== 'active') continue;
+      if (s.status !== 'active' || s.payment_plan === 'CUSTOM') continue;
+      
+      if (s.payment_plan === 'QUARTERLY' && m % 3 !== 1) continue;
+
       const fee = instrumentFees.find(f => f.instrument_name === s.instrument)!;
+      const amount = s.payment_plan === 'QUARTERLY' ? fee.monthly_fee * 3 : fee.monthly_fee;
+
       const status: PaymentStatus = offset === 0
         ? (Math.random() > 0.5 ? 'Pending' : 'Paid')
         : pick(paymentStatuses);
-      monthlyPayments.push({
+        
+      feePayments.push({
         id: uid(),
         student_id: s.id,
-        month: m,
-        year: y,
-        amount: fee.monthly_fee,
+        amount,
+        payment_date: new Date(y, m - 1, 1).toISOString(),
+        payment_type: s.payment_plan === 'QUARTERLY' ? 'Quarterly' : 'Monthly',
+        period_start: `${y}-${String(m).padStart(2, '0')}`,
         status,
         updated_at: new Date().toISOString(),
+        created_at: new Date().toISOString(),
       });
     }
   }
@@ -169,7 +198,7 @@ function createSeedData(): Database {
   return {
     students,
     instrument_fees: instrumentFees,
-    monthly_fee_payments: monthlyPayments,
+    fee_payments: feePayments,
     exam_fee_structure: examFees,
     exam_registrations: examRegistrations,
   };
@@ -182,7 +211,7 @@ function createSeedData(): Database {
 const CK = {
   STUDENTS: 'db:students',
   INSTRUMENT_FEES: 'db:instrument_fees',
-  MONTHLY_PAYMENTS: 'db:monthly_payments',
+  FEE_PAYMENTS: 'db:monthly_payments',
   EXAM_STRUCTURE: 'db:exam_structure',
   EXAM_REGISTRATIONS: 'db:exam_registrations',
   DASHBOARD: 'db:dashboard',
@@ -282,17 +311,17 @@ export function getFeeForInstrument(instrument: Instrument): number {
 }
 
 // ========================
-// MONTHLY FEE PAYMENTS
+// FEE PAYMENTS
 // ========================
 
-export function getMonthlyPayments(filters?: {
-  month?: number; year?: number; centre?: Centre; instrument?: Instrument; status?: PaymentStatus;
-}): (MonthlyFeePayment & { student_name: string; student_phone: string; student_instrument: Instrument; student_centre: Centre })[] {
+export function getFeePayments(filters?: {
+  student_id?: string; payment_type?: PaymentType; status?: PaymentStatus; centre?: Centre; instrument?: Instrument;
+}): (FeePayment & { student_name: string; student_phone: string; student_instrument: Instrument; student_centre: Centre; payment_plan?: PaymentPlan })[] {
   const db = readDB();
-  let payments = db.monthly_fee_payments;
+  let payments = db.fee_payments;
 
-  if (filters?.month) payments = payments.filter(p => p.month === filters.month);
-  if (filters?.year) payments = payments.filter(p => p.year === filters.year);
+  if (filters?.student_id) payments = payments.filter(p => p.student_id === filters.student_id);
+  if (filters?.payment_type) payments = payments.filter(p => p.payment_type === filters.payment_type);
   if (filters?.status) payments = payments.filter(p => p.status === filters.status);
 
   // Join with students
@@ -305,49 +334,68 @@ export function getMonthlyPayments(filters?: {
       student_phone: s?.phone ?? '',
       student_instrument: (s?.instrument ?? 'Guitar') as Instrument,
       student_centre: (s?.centre ?? 'Prayag Sangeet Samiti') as Centre,
+      payment_plan: s?.payment_plan,
     };
   });
 
   if (filters?.centre) joined = joined.filter(j => j.student_centre === filters.centre);
   if (filters?.instrument) joined = joined.filter(j => j.student_instrument === filters.instrument);
 
+  joined.sort((a, b) => new Date(b.payment_date).getTime() - new Date(a.payment_date).getTime());
+
   return joined;
 }
 
-export function updatePaymentStatus(id: string, status: PaymentStatus): boolean {
+export function createFeePayment(data: Omit<FeePayment, 'id' | 'created_at' | 'updated_at'>): FeePayment {
   const db = readDB();
-  const idx = db.monthly_fee_payments.findIndex(p => p.id === id);
+  const payment: FeePayment = {
+    ...data,
+    id: uid(),
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+  db.fee_payments.push(payment);
+  writeDB(db);
+  invalidateAll();
+  return payment;
+}
+
+export function updatePaymentStatus(id: string, updates: Partial<FeePayment>): boolean {
+  const db = readDB();
+  const idx = db.fee_payments.findIndex(p => p.id === id);
   if (idx === -1) return false;
-  db.monthly_fee_payments[idx].status = status;
-  db.monthly_fee_payments[idx].updated_at = new Date().toISOString();
+  db.fee_payments[idx] = { ...db.fee_payments[idx], ...updates, updated_at: new Date().toISOString() };
   writeDB(db);
   invalidateAll();
   return true;
 }
 
-export function generateMonthlyPayments(month: number, year: number): number {
+export function generateExpectedPayments(month: number, year: number): number {
   const db = readDB();
+  const periodStr = `${year}-${String(month).padStart(2, '0')}`;
 
-  // Only generate for active students who don't already have a record
-  const existing = new Set(
-    db.monthly_fee_payments
-      .filter(p => p.month === month && p.year === year)
-      .map(p => p.student_id)
-  );
-
-  const activeStudents = db.students.filter(s => s.status === 'active' && !existing.has(s.id));
+  const currentPayments = db.fee_payments.filter(p => p.period_start === periodStr);
+  const existingIds = new Set(currentPayments.map(p => p.student_id));
+  
+  const activeStudents = db.students.filter(s => s.status === 'active' && s.payment_plan !== 'CUSTOM' && !existingIds.has(s.id));
+  
   let count = 0;
-
   for (const s of activeStudents) {
+    if (s.payment_plan === 'QUARTERLY' && month % 3 !== 1) continue;
+
     const fee = db.instrument_fees.find(f => f.instrument_name === s.instrument);
-    db.monthly_fee_payments.push({
+    const amount = (fee?.monthly_fee ?? 0) * (s.payment_plan === 'QUARTERLY' ? 3 : 1);
+    
+    db.fee_payments.push({
       id: uid(),
       student_id: s.id,
-      month,
-      year,
-      amount: fee?.monthly_fee ?? 0,
+      amount,
+      payment_date: new Date(year, month - 1, 1).toISOString(),
+      payment_type: s.payment_plan === 'QUARTERLY' ? 'Quarterly' : 'Monthly',
+      period_start: periodStr,
       status: 'Pending',
       updated_at: new Date().toISOString(),
+      created_at: new Date().toISOString(),
     });
     count++;
   }
@@ -358,7 +406,6 @@ export function generateMonthlyPayments(month: number, year: number): number {
   }
   return count;
 }
-
 // ========================
 // EXAM FEE STRUCTURE
 // ========================
@@ -464,8 +511,9 @@ export function getDashboardStats(): DashboardStats {
   const now = new Date();
   const currentMonth = now.getMonth() + 1;
   const currentYear = now.getFullYear();
-  const currentPayments = db.monthly_fee_payments.filter(
-    p => p.month === currentMonth && p.year === currentYear
+  const periodStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
+  const currentPayments = db.fee_payments.filter(
+    p => p.period_start === periodStr || new Date(p.payment_date).getMonth() + 1 === currentMonth
   );
   const monthlyFeesCollected = currentPayments
     .filter(p => p.status === 'Paid')
@@ -509,7 +557,7 @@ export function deleteStudent(id: string): boolean {
   if (idx === -1) return false;
 
   // Cascade delete associated records
-  db.monthly_fee_payments = db.monthly_fee_payments.filter(p => p.student_id !== id);
+  db.fee_payments = db.fee_payments.filter(p => p.student_id !== id);
   db.exam_registrations = db.exam_registrations.filter(r => r.student_id !== id);
 
   db.students.splice(idx, 1);
@@ -518,12 +566,12 @@ export function deleteStudent(id: string): boolean {
   return true;
 }
 
-export function deleteMonthlyPayment(id: string): boolean {
+export function deleteFeePayment(id: string): boolean {
   const db = readDB();
-  const idx = db.monthly_fee_payments.findIndex(p => p.id === id);
+  const idx = db.fee_payments.findIndex(p => p.id === id);
   if (idx === -1) return false;
 
-  db.monthly_fee_payments.splice(idx, 1);
+  db.fee_payments.splice(idx, 1);
   writeDB(db);
   invalidateAll();
   return true;

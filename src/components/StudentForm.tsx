@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import type { Student, Instrument, Centre } from '@/lib/types';
-import { INSTRUMENTS, CENTRES } from '@/lib/types';
+import type { Student, Instrument, Centre, PaymentPlan } from '@/lib/types';
+import { INSTRUMENTS, CENTRES, PAYMENT_PLANS } from '@/lib/types';
 
 interface StudentFormProps {
   student?: Student;
@@ -25,6 +25,7 @@ export default function StudentForm({ student, onSave, onCancel, mode }: Student
   const [instrument, setInstrument] = useState<Instrument>(student?.instrument || 'Guitar');
   const [centre, setCentre] = useState<Centre>(student?.centre || 'Prayag Sangeet Samiti');
   const [class_timing, setClassTiming] = useState(student?.class_timing || CLASS_TIMINGS[0]);
+  const [payment_plan, setPaymentPlan] = useState<PaymentPlan>(student?.payment_plan || 'MONTHLY');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -42,6 +43,7 @@ export default function StudentForm({ student, onSave, onCancel, mode }: Student
         instrument,
         centre,
         class_timing,
+        payment_plan
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save');
@@ -143,17 +145,32 @@ export default function StudentForm({ student, onSave, onCancel, mode }: Student
             </div>
           </div>
 
-          <div className="form-group">
-            <label className="form-label">Class Timing *</label>
-            <select
-              value={class_timing}
-              onChange={e => setClassTiming(e.target.value)}
-              className="form-select"
-            >
-              {CLASS_TIMINGS.map(t => (
-                <option key={t} value={t}>{t}</option>
-              ))}
-            </select>
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label">Class Timing *</label>
+              <select
+                value={class_timing}
+                onChange={e => setClassTiming(e.target.value)}
+                className="form-select"
+              >
+                {CLASS_TIMINGS.map(t => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            </div>
+            
+            <div className="form-group">
+              <label className="form-label">Payment Plan *</label>
+              <select
+                value={payment_plan}
+                onChange={e => setPaymentPlan(e.target.value as PaymentPlan)}
+                className="form-select"
+              >
+                {PAYMENT_PLANS.map(p => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <div className="form-actions">
