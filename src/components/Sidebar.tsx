@@ -70,7 +70,7 @@ export default function Sidebar() {
         <div className="sidebar-header">
           <div className="sidebar-logo">
             <span className="sidebar-logo-icon">♪</span>
-            <span className="sidebar-logo-text">MusicClass</span>
+            <span className="sidebar-logo-text">Shatakshi Sangeet Vidyalaya</span>
           </div>
         </div>
         <nav className="sidebar-nav">
@@ -90,7 +90,7 @@ export default function Sidebar() {
         </nav>
         <div className="sidebar-footer">
           <div className="sidebar-footer-text">
-            <span className="text-xs opacity-60">Music Class Admin</span>
+            <span className="text-xs opacity-60">Shatakshi Sangeet Vidyalaya Admin</span>
             <span className="text-xs opacity-40">v2.0.0</span>
           </div>
         </div>

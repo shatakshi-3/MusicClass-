@@ -9,8 +9,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "MusicClass Admin — Music Class Management",
-  description: "Admin dashboard for managing music class students, fees, and exam centres",
+  title: "Shatakshi Sangeet Vidyalaya Admin",
+  description: "Admin dashboard for managing students, fees, and exam centres",
 };
 
 export default function RootLayout({

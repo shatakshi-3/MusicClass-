@@ -1,6 +1,6 @@
 // GET/PUT/DELETE /api/students/[id]
 import { NextRequest, NextResponse } from 'next/server';
-import { getStudentById, updateStudent, deactivateStudent } from '@/lib/db';
+import { getStudentById, updateStudent, deleteStudent } from '@/lib/db';
 import { INSTRUMENTS, CENTRES } from '@/lib/types';
 
 export async function GET(
@@ -94,13 +94,13 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const success = deactivateStudent(id);
+    const success = deleteStudent(id);
     if (!success) {
       return NextResponse.json({ error: 'Student not found' }, { status: 404 });
     }
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('[API] Error deactivating student:', error);
-    return NextResponse.json({ error: 'Failed to deactivate student' }, { status: 500 });
+    console.error('[API] Error deleting student:', error);
+    return NextResponse.json({ error: 'Failed to delete student' }, { status: 500 });
   }
 }

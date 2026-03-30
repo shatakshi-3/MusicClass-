@@ -23,7 +23,7 @@ export default function StudentForm({ student, onSave, onCancel, mode }: Student
   const [age, setAge] = useState(student?.age?.toString() || '');
   const [parents_name, setParentsName] = useState(student?.parents_name || '');
   const [instrument, setInstrument] = useState<Instrument>(student?.instrument || 'Guitar');
-  const [centre, setCentre] = useState<Centre>(student?.centre || 'Centre A');
+  const [centre, setCentre] = useState<Centre>(student?.centre || 'Prayag Sangeet Samiti');
   const [class_timing, setClassTiming] = useState(student?.class_timing || CLASS_TIMINGS[0]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');

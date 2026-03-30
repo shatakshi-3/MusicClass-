@@ -25,7 +25,23 @@ function readDB(): Database {
     return seed;
   }
   const raw = fs.readFileSync(DB_PATH, 'utf-8');
-  return JSON.parse(raw) as Database;
+  const db = JSON.parse(raw) as Database;
+
+  // Migration logic for Centre names
+  let migrated = false;
+  db.students.forEach(s => {
+    if ((s.centre as string) === 'Centre A') { s.centre = 'Prayag Sangeet Samiti' as Centre; migrated = true; }
+    if ((s.centre as string) === 'Centre B') { s.centre = 'Khairagarh University' as Centre; migrated = true; }
+  });
+  db.exam_registrations.forEach(r => {
+    if ((r.centre as string) === 'Centre A') { r.centre = 'Prayag Sangeet Samiti' as Centre; migrated = true; }
+    if ((r.centre as string) === 'Centre B') { r.centre = 'Khairagarh University' as Centre; migrated = true; }
+  });
+  if (migrated) {
+    writeDB(db);
+  }
+
+  return db;
 }
 
 function writeDB(db: Database): void {
@@ -288,7 +304,7 @@ export function getMonthlyPayments(filters?: {
       student_name: s?.name ?? 'Unknown',
       student_phone: s?.phone ?? '',
       student_instrument: (s?.instrument ?? 'Guitar') as Instrument,
-      student_centre: (s?.centre ?? 'Centre A') as Centre,
+      student_centre: (s?.centre ?? 'Prayag Sangeet Samiti') as Centre,
     };
   });
 
@@ -481,4 +497,45 @@ export function getDashboardStats(): DashboardStats {
 
   cache.set(CK.DASHBOARD, stats, 30);
   return stats;
+}
+
+// ========================
+// DELETION OPERATIONS (ADMIN)
+// ========================
+
+export function deleteStudent(id: string): boolean {
+  const db = readDB();
+  const idx = db.students.findIndex(s => s.id === id);
+  if (idx === -1) return false;
+
+  // Cascade delete associated records
+  db.monthly_fee_payments = db.monthly_fee_payments.filter(p => p.student_id !== id);
+  db.exam_registrations = db.exam_registrations.filter(r => r.student_id !== id);
+
+  db.students.splice(idx, 1);
+  writeDB(db);
+  invalidateAll();
+  return true;
+}
+
+export function deleteMonthlyPayment(id: string): boolean {
+  const db = readDB();
+  const idx = db.monthly_fee_payments.findIndex(p => p.id === id);
+  if (idx === -1) return false;
+
+  db.monthly_fee_payments.splice(idx, 1);
+  writeDB(db);
+  invalidateAll();
+  return true;
+}
+
+export function deleteExamRegistration(id: string): boolean {
+  const db = readDB();
+  const idx = db.exam_registrations.findIndex(r => r.id === id);
+  if (idx === -1) return false;
+
+  db.exam_registrations.splice(idx, 1);
+  writeDB(db);
+  invalidateAll();
+  return true;
 }

@@ -1,6 +1,6 @@
 // PUT /api/fees/monthly/[id] — update payment status
 import { NextRequest, NextResponse } from 'next/server';
-import { updatePaymentStatus } from '@/lib/db';
+import { updatePaymentStatus, deleteMonthlyPayment } from '@/lib/db';
 import { PAYMENT_STATUSES, type PaymentStatus } from '@/lib/types';
 
 export async function PUT(
@@ -25,5 +25,22 @@ export async function PUT(
   } catch (error) {
     console.error('[API] Error updating payment:', error);
     return NextResponse.json({ error: 'Failed to update payment' }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const success = deleteMonthlyPayment(id);
+    if (!success) {
+      return NextResponse.json({ error: 'Payment record not found' }, { status: 404 });
+    }
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('[API] Error deleting monthly payment:', error);
+    return NextResponse.json({ error: 'Failed to delete monthly payment' }, { status: 500 });
   }
 }

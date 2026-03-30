@@ -148,7 +148,7 @@ export default function StudentProfilePage() {
             <div className="profile-detail">
               <span className="profile-label">Centre</span>
               <span className="profile-value">
-                <span className={`centre-badge ${student.centre === 'Centre A' ? 'centre-badge-a' : 'centre-badge-b'}`}>
+                <span className={`centre-badge ${student.centre === 'Prayag Sangeet Samiti' ? 'centre-badge-a' : 'centre-badge-b'}`}>
                   {student.centre}
                 </span>
               </span>
@@ -228,7 +228,7 @@ export default function StudentProfilePage() {
                   <tr key={e.id}>
                     <td>Year {e.exam_year}</td>
                     <td>
-                      <span className={`centre-badge ${e.centre === 'Centre A' ? 'centre-badge-a' : 'centre-badge-b'}`}>
+                      <span className={`centre-badge ${e.centre === 'Prayag Sangeet Samiti' ? 'centre-badge-a' : 'centre-badge-b'}`}>
                         {e.centre}
                       </span>
                     </td>

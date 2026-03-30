@@ -48,8 +48,8 @@ export default function LoginPage() {
       <div className="login-card">
         <div className="login-header">
           <div className="login-logo">♪</div>
-          <h1 className="login-title">MusicClass Admin</h1>
-          <p className="login-subtitle">Sign in to manage your music class</p>
+          <h1 className="login-title">Shatakshi Sangeet Vidyalaya</h1>
+          <p className="login-subtitle">Sign in to the admin panel</p>
         </div>
 
         <form onSubmit={handleSubmit} className="login-form">
@@ -110,7 +110,7 @@ export default function LoginPage() {
         </form>
 
         <div className="login-footer">
-          <p>Music Class Admin Panel</p>
+          <p>Shatakshi Sangeet Vidyalaya Admin Panel</p>
         </div>
       </div>
     </div>

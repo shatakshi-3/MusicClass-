@@ -34,6 +34,9 @@ export default function ExamsPage() {
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [showForm, setShowForm] = useState(false);
 
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
   const fetchRegistrations = useCallback(() => {
     setLoading(true);
     const params = new URLSearchParams();
@@ -94,6 +97,24 @@ export default function ExamsPage() {
       body: JSON.stringify({ payment_status }),
     });
     fetchRegistrations();
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteId) return;
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`/api/exams/registrations/${deleteId}`, { method: 'DELETE' });
+      if (res.ok) {
+        setDeleteId(null);
+        fetchRegistrations();
+      } else {
+        alert('Failed to delete registration');
+      }
+    } catch {
+      alert('Network error while deleting');
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const handleRegister = async (data: { student_id: string; exam_year: ExamYear; centre: Centre }) => {
@@ -174,13 +195,14 @@ export default function ExamsPage() {
                 <th onClick={() => handleSort('exam_fee')} className="sortable-th">Exam Fee <SortIcon column="exam_fee" /></th>
                 <th onClick={() => handleSort('payment_status')} className="sortable-th">Status <SortIcon column="payment_status" /></th>
                 <th onClick={() => handleSort('created_at')} className="sortable-th">Date <SortIcon column="created_at" /></th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <TableSkeleton rows={10} columns={7} />
+                <TableSkeleton rows={10} columns={8} />
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={7} className="table-empty">No exam registrations found. Click &quot;Register Student&quot; to add one.</td></tr>
+                <tr><td colSpan={8} className="table-empty">No exam registrations found. Click &quot;Register Student&quot; to add one.</td></tr>
               ) : (
                 filtered.map(r => (
                   <tr key={r.id}>
@@ -188,7 +210,7 @@ export default function ExamsPage() {
                     <td className="table-cell-mono">{r.student_phone}</td>
                     <td>Year {r.exam_year}</td>
                     <td>
-                      <span className={`centre-badge ${r.centre === 'Centre A' ? 'centre-badge-a' : 'centre-badge-b'}`}>
+                      <span className={`centre-badge ${r.centre === 'Prayag Sangeet Samiti' ? 'centre-badge-a' : 'centre-badge-b'}`}>
                         {r.centre}
                       </span>
                     </td>
@@ -204,6 +226,17 @@ export default function ExamsPage() {
                       </select>
                     </td>
                     <td className="table-cell-timing">{new Date(r.created_at).toLocaleDateString('en-IN')}</td>
+                    <td>
+                      <button
+                        className="p-1 rounded hover:bg-rose-100 text-rose-500 transition-colors"
+                        onClick={() => setDeleteId(r.id)}
+                        title="Delete Exam Registration"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+                        </svg>
+                      </button>
+                    </td>
                   </tr>
                 ))
               )}
@@ -217,6 +250,25 @@ export default function ExamsPage() {
           onSave={handleRegister}
           onCancel={() => setShowForm(false)}
         />
+      )}
+
+      {deleteId && (
+        <div className="modal-overlay" onClick={() => setDeleteId(null)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title" style={{ color: '#e11d48' }}>Permanently Delete Exam Registration?</h3>
+            </div>
+            <div style={{ padding: '1rem' }}>
+              <p style={{ marginBottom: '1rem' }}>Are you sure? This action cannot be undone.</p>
+              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
+                <button onClick={() => setDeleteId(null)} className="btn-secondary" disabled={isDeleting}>Cancel</button>
+                <button onClick={confirmDelete} className="btn-primary" style={{ backgroundColor: '#e11d48', borderColor: '#e11d48' }} disabled={isDeleting}>
+                  {isDeleting ? 'Deleting...' : 'Delete Registration'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -239,7 +291,7 @@ function ExamRegistrationForm({
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [showDropdown, setShowDropdown] = useState(false);
   const [examYear, setExamYear] = useState<ExamYear>(1);
-  const [centre, setCentre] = useState<Centre>('Centre A');
+  const [centre, setCentre] = useState<Centre>('Prayag Sangeet Samiti');
   const [examFee, setExamFee] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');

@@ -2,7 +2,7 @@
 // CONSTANTS
 // ========================
 
-export const CENTRES = ['Centre A', 'Centre B'] as const;
+export const CENTRES = ['Prayag Sangeet Samiti', 'Khairagarh University'] as const;
 export type Centre = (typeof CENTRES)[number];
 
 export const INSTRUMENTS = ['Guitar', 'Piano', 'Tabla', 'Vocal', 'Keyboard', 'Violin'] as const;

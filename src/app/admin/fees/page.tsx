@@ -36,6 +36,9 @@ export default function FeesPage() {
   const [genMessage, setGenMessage] = useState('');
   const [noRecords, setNoRecords] = useState(false);
 
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
   const fetchPayments = useCallback(() => {
     setLoading(true);
     const params = new URLSearchParams();
@@ -74,6 +77,24 @@ export default function FeesPage() {
       body: JSON.stringify({ status: newStatus }),
     });
     fetchPayments();
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteId) return;
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`/api/fees/monthly/${deleteId}`, { method: 'DELETE' });
+      if (res.ok) {
+        setDeleteId(null);
+        fetchPayments();
+      } else {
+        alert('Failed to delete payment');
+      }
+    } catch {
+      alert('Network error while deleting');
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const handleGenerate = async () => {
@@ -150,8 +171,8 @@ export default function FeesPage() {
         </select>
         <select value={centreFilter} onChange={e => setCentreFilter(e.target.value)} className="table-select">
           <option value="all">All Centres</option>
-          <option value="Centre A">Centre A</option>
-          <option value="Centre B">Centre B</option>
+          <option value="Prayag Sangeet Samiti">Prayag Sangeet Samiti</option>
+          <option value="Khairagarh University">Khairagarh University</option>
         </select>
         <select value={instrumentFilter} onChange={e => setInstrumentFilter(e.target.value)} className="table-select">
           <option value="all">All Instruments</option>
@@ -181,13 +202,14 @@ export default function FeesPage() {
                 <th>Centre</th>
                 <th>Amount</th>
                 <th>Status</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <TableSkeleton rows={10} columns={6} />
+                <TableSkeleton rows={10} columns={7} />
               ) : payments.length === 0 ? (
-                <tr><td colSpan={6} className="table-empty">No payment records for this period. Click &quot;Generate Records&quot; to create them.</td></tr>
+                <tr><td colSpan={7} className="table-empty">No payment records for this period. Click &quot;Generate Records&quot; to create them.</td></tr>
               ) : (
                 payments.map(p => (
                   <tr key={p.id}>
@@ -195,7 +217,7 @@ export default function FeesPage() {
                     <td className="table-cell-mono">{p.student_phone}</td>
                     <td>{p.student_instrument}</td>
                     <td>
-                      <span className={`centre-badge ${p.student_centre === 'Centre A' ? 'centre-badge-a' : 'centre-badge-b'}`}>
+                      <span className={`centre-badge ${p.student_centre === 'Prayag Sangeet Samiti' ? 'centre-badge-a' : 'centre-badge-b'}`}>
                         {p.student_centre}
                       </span>
                     </td>
@@ -212,6 +234,17 @@ export default function FeesPage() {
                         <option value="Waived">Waived</option>
                       </select>
                     </td>
+                    <td>
+                      <button 
+                        className="p-1 rounded hover:bg-rose-100 text-rose-500 transition-colors"
+                        onClick={() => setDeleteId(p.id)}
+                        title="Delete Fee Record"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+                        </svg>
+                      </button>
+                    </td>
                   </tr>
                 ))
               )}
@@ -219,6 +252,25 @@ export default function FeesPage() {
           </table>
         </div>
       </div>
+
+      {deleteId && (
+        <div className="modal-overlay" onClick={() => setDeleteId(null)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title" style={{ color: '#e11d48' }}>Permanently Delete Fee Record?</h3>
+            </div>
+            <div style={{ padding: '1rem' }}>
+              <p style={{ marginBottom: '1rem' }}>Are you sure? This action cannot be undone.</p>
+              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
+                <button onClick={() => setDeleteId(null)} className="btn-secondary" disabled={isDeleting}>Cancel</button>
+                <button onClick={confirmDelete} className="btn-primary" style={{ backgroundColor: '#e11d48', borderColor: '#e11d48' }} disabled={isDeleting}>
+                  {isDeleting ? 'Deleting...' : 'Delete Record'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
