@@ -80,18 +80,6 @@ export interface ExamRegistration {
 }
 
 // ========================
-// DATABASE SHAPE
-// ========================
-
-export interface Database {
-  students: Student[];
-  instrument_fees: InstrumentFee[];
-  fee_payments: FeePayment[];
-  exam_fee_structure: ExamFeeStructure[];
-  exam_registrations: ExamRegistration[];
-}
-
-// ========================
 // DASHBOARD STATS
 // ========================
 

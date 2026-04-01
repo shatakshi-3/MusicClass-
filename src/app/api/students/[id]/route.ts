@@ -9,7 +9,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const student = getStudentById(id);
+    const student = await getStudentById(id);
     if (!student) {
       return NextResponse.json({ error: 'Student not found' }, { status: 404 });
     }
@@ -82,7 +82,7 @@ export async function PUT(
       return NextResponse.json({ error: 'No updates provided' }, { status: 400 });
     }
 
-    const student = updateStudent(id, updates);
+    const student = await updateStudent(id, updates);
     if (!student) {
       return NextResponse.json({ error: 'Student not found' }, { status: 404 });
     }
@@ -100,7 +100,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const success = deleteStudent(id);
+    const success = await deleteStudent(id);
     if (!success) {
       return NextResponse.json({ error: 'Student not found' }, { status: 404 });
     }

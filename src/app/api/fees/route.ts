@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
     const instrument = url.searchParams.get('instrument') as Instrument | null;
     const status = url.searchParams.get('status') as PaymentStatus | null;
 
-    const payments = getFeePayments({
+    const payments = await getFeePayments({
       student_id,
       payment_type: payment_type || undefined,
       centre: centre || undefined,
@@ -21,9 +21,9 @@ export async function GET(request: NextRequest) {
       status: status || undefined,
     });
 
-    const totalAmount = payments.reduce((sum, p) => sum + p.amount, 0);
-    const paidAmount = payments.filter(p => p.status === 'Paid').reduce((sum, p) => sum + p.amount, 0);
-    const pendingAmount = payments.filter(p => p.status !== 'Paid').reduce((sum, p) => sum + p.amount, 0);
+    const totalAmount = payments.reduce((sum, p) => sum + Number(p.amount), 0);
+    const paidAmount = payments.filter(p => p.status === 'Paid').reduce((sum, p) => sum + Number(p.amount), 0);
+    const pendingAmount = payments.filter(p => p.status !== 'Paid').reduce((sum, p) => sum + Number(p.amount), 0);
 
     return NextResponse.json({ payments, totalAmount, paidAmount, pendingAmount });
   } catch (error) {
@@ -41,12 +41,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields or invalid amount' }, { status: 400 });
     }
 
-    const student = getStudentById(student_id);
+    const student = await getStudentById(student_id);
     if (!student) {
       return NextResponse.json({ error: 'Student not found' }, { status: 404 });
     }
 
-    const payment = createFeePayment({
+    const payment = await createFeePayment({
       student_id,
       amount: Number(amount),
       payment_date,

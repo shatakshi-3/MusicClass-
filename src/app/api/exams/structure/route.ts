@@ -4,7 +4,7 @@ import { getExamFeeStructure, updateExamFee } from '@/lib/db';
 
 export async function GET() {
   try {
-    const structure = getExamFeeStructure();
+    const structure = await getExamFeeStructure();
     return NextResponse.json({ structure });
   } catch (error) {
     console.error('[API] Error fetching exam structure:', error);
@@ -24,7 +24,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Valid fee amount required (0-100000)' }, { status: 400 });
     }
 
-    const updated = updateExamFee(id, exam_fee);
+    const updated = await updateExamFee(id, exam_fee);
     if (!updated) {
       return NextResponse.json({ error: 'Exam fee record not found' }, { status: 404 });
     }

@@ -36,7 +36,7 @@ export async function PUT(
       return NextResponse.json({ error: 'No valid fields provided to update' }, { status: 400 });
     }
 
-    const success = updatePaymentStatus(id, updates);
+    const success = await updatePaymentStatus(id, updates);
     if (!success) {
       return NextResponse.json({ error: 'Payment record not found' }, { status: 404 });
     }
@@ -54,7 +54,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const success = deleteFeePayment(id);
+    const success = await deleteFeePayment(id);
     if (!success) {
       return NextResponse.json({ error: 'Payment record not found' }, { status: 404 });
     }

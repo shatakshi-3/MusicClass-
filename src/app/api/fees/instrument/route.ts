@@ -4,7 +4,7 @@ import { getInstrumentFees, updateInstrumentFee } from '@/lib/db';
 
 export async function GET() {
   try {
-    const fees = getInstrumentFees();
+    const fees = await getInstrumentFees();
     return NextResponse.json({ fees });
   } catch (error) {
     console.error('[API] Error fetching instrument fees:', error);
@@ -24,7 +24,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Valid fee amount required (0-100000)' }, { status: 400 });
     }
 
-    const updated = updateInstrumentFee(id, monthly_fee);
+    const updated = await updateInstrumentFee(id, monthly_fee);
     if (!updated) {
       return NextResponse.json({ error: 'Fee record not found' }, { status: 404 });
     }

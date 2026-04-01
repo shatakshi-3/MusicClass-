@@ -9,13 +9,13 @@ export async function GET(request: NextRequest) {
     const centre = url.searchParams.get('centre') as Centre | null;
     const payment_status = url.searchParams.get('payment_status') as ExamPaymentStatus | null;
 
-    const registrations = getExamRegistrations({
+    const registrations = await getExamRegistrations({
       centre: centre || undefined,
       payment_status: payment_status || undefined,
     });
 
-    const totalFees = registrations.reduce((sum, r) => sum + r.exam_fee, 0);
-    const paidFees = registrations.filter(r => r.payment_status === 'Paid').reduce((sum, r) => sum + r.exam_fee, 0);
+    const totalFees = registrations.reduce((sum, r) => sum + Number(r.exam_fee), 0);
+    const paidFees = registrations.filter(r => r.payment_status === 'Paid').reduce((sum, r) => sum + Number(r.exam_fee), 0);
 
     return NextResponse.json({ registrations, totalFees, paidFees });
   } catch (error) {
@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Student ID is required' }, { status: 400 });
     }
 
-    const student = getStudentById(student_id);
+    const student = await getStudentById(student_id);
     if (!student) {
       return NextResponse.json({ error: 'Student not found' }, { status: 404 });
     }
@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Valid centre is required' }, { status: 400 });
     }
 
-    const registration = createExamRegistration({
+    const registration = await createExamRegistration({
       student_id,
       exam_year: exam_year as ExamYear,
       centre: centre as Centre,

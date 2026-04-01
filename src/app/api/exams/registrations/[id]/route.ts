@@ -16,7 +16,7 @@ export async function PUT(
       return NextResponse.json({ error: 'Valid payment status required: Paid, Pending' }, { status: 400 });
     }
 
-    const success = updateExamPaymentStatus(id, payment_status as ExamPaymentStatus);
+    const success = await updateExamPaymentStatus(id, payment_status as ExamPaymentStatus);
     if (!success) {
       return NextResponse.json({ error: 'Registration not found' }, { status: 404 });
     }
@@ -34,7 +34,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const success = deleteExamRegistration(id);
+    const success = await deleteExamRegistration(id);
     if (!success) {
       return NextResponse.json({ error: 'Registration not found' }, { status: 404 });
     }

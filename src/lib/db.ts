@@ -1,308 +1,107 @@
-// JSON file-based data store for the Music Class app
-// Persists to data/db.json, auto-seeds on first run
+// Supabase-backed data layer for the Music Class app
+// All operations are async and query PostgreSQL via Supabase
 
-import fs from 'fs';
-import path from 'path';
-import { cache } from './cache';
+import { supabase } from './supabase';
 import type {
-  Database, Student, InstrumentFee, FeePayment,
+  Student, InstrumentFee, FeePayment,
   ExamFeeStructure, ExamRegistration, DashboardStats,
-  Instrument, Centre, PaymentStatus, ExamPaymentStatus, PaymentLabel, PaymentBehavior, ExamYear, StudentStatus,
+  Instrument, Centre, PaymentStatus, PaymentLabel, PaymentBehavior,
+  ExamPaymentStatus, ExamYear, StudentStatus,
 } from './types';
-import { INSTRUMENTS, CENTRES, EXAM_YEARS } from './types';
-
-// ========================
-// FILE PATH & I/O
-// ========================
-
-const DB_DIR = path.join(process.cwd(), 'data');
-const DB_PATH = path.join(DB_DIR, 'db.json');
-
-function readDB(): Database {
-  if (!fs.existsSync(DB_PATH)) {
-    const seed = createSeedData();
-    writeDB(seed);
-    return seed;
-  }
-  const raw = fs.readFileSync(DB_PATH, 'utf-8');
-  const db = JSON.parse(raw) as Database;
-
-  let migrated = false;
-
-  // === MIGRATION: old monthly_fee_payments → fee_payments ===
-  if ((db as any).monthly_fee_payments) {
-    db.fee_payments = (db as any).monthly_fee_payments.map((p: any) => ({
-      id: p.id,
-      student_id: p.student_id,
-      amount: p.amount,
-      payment_date: new Date(p.year, p.month - 1, 1).toISOString(),
-      payment_type: 'Regular' as PaymentLabel,
-      period_label: `${p.year}-${String(p.month).padStart(2, '0')}`,
-      status: (p.status === 'Late' || p.status === 'Waived') ? 'Paid' : p.status,
-      updated_at: p.updated_at,
-      created_at: p.updated_at || new Date().toISOString()
-    }));
-    delete (db as any).monthly_fee_payments;
-    migrated = true;
-  }
-  if (!db.fee_payments) db.fee_payments = [];
-
-  // === MIGRATION: old payment_plan → payment_type on students ===
-  const planMap: Record<string, PaymentBehavior> = { 'MONTHLY': 'REGULAR', 'QUARTERLY': 'OCCASIONAL', 'CUSTOM': 'FLEXIBLE' };
-  db.students.forEach(s => {
-    // Migrate old payment_plan field
-    if ((s as any).payment_plan) {
-      s.payment_type = planMap[(s as any).payment_plan] || (s as any).payment_plan;
-      delete (s as any).payment_plan;
-      migrated = true;
-    }
-    if (!s.payment_type) { s.payment_type = 'REGULAR'; migrated = true; }
-
-    // Centre name migration
-    if ((s.centre as string) === 'Centre A') { s.centre = 'Prayag Sangeet Samiti' as Centre; migrated = true; }
-    if ((s.centre as string) === 'Centre B') { s.centre = 'Khairagarh University' as Centre; migrated = true; }
-  });
-
-  // === MIGRATION: old fee_payments fields ===
-  const labelMap: Record<string, PaymentLabel> = { 'Monthly': 'Regular', 'Quarterly': 'Occasional', 'Custom': 'Flexible' };
-  db.fee_payments.forEach((p: any) => {
-    // Migrate old payment_type values
-    if (labelMap[p.payment_type]) { p.payment_type = labelMap[p.payment_type]; migrated = true; }
-    // Migrate period_start → period_label
-    if (p.period_start && !p.period_label) { p.period_label = p.period_start; delete p.period_start; migrated = true; }
-    if (p.period_end) { delete p.period_end; migrated = true; }
-    // Simplify old statuses
-    if (p.status === 'Late' || p.status === 'Waived') { p.status = 'Paid'; migrated = true; }
-  });
-
-  // Exam centre migration
-  db.exam_registrations.forEach(r => {
-    if ((r.centre as string) === 'Centre A') { r.centre = 'Prayag Sangeet Samiti' as Centre; migrated = true; }
-    if ((r.centre as string) === 'Centre B') { r.centre = 'Khairagarh University' as Centre; migrated = true; }
-  });
-
-  if (migrated) {
-    writeDB(db);
-  }
-
-  return db;
-}
-
-function writeDB(db: Database): void {
-  if (!fs.existsSync(DB_DIR)) {
-    fs.mkdirSync(DB_DIR, { recursive: true });
-  }
-  fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2), 'utf-8');
-}
-
-function uid(): string {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
-}
-
-// ========================
-// SEED DATA
-// ========================
-
-function createSeedData(): Database {
-  const instrumentFees: InstrumentFee[] = [
-    { id: uid(), instrument_name: 'Guitar', monthly_fee: 1200 },
-    { id: uid(), instrument_name: 'Piano', monthly_fee: 1500 },
-    { id: uid(), instrument_name: 'Tabla', monthly_fee: 1000 },
-    { id: uid(), instrument_name: 'Vocal', monthly_fee: 900 },
-    { id: uid(), instrument_name: 'Keyboard', monthly_fee: 1300 },
-    { id: uid(), instrument_name: 'Violin', monthly_fee: 1400 },
-  ];
-
-  const examFees: ExamFeeStructure[] = [
-    { id: uid(), exam_year: 1, exam_fee: 1500 },
-    { id: uid(), exam_year: 2, exam_fee: 2000 },
-    { id: uid(), exam_year: 3, exam_fee: 2500 },
-    { id: uid(), exam_year: 4, exam_fee: 3000 },
-    { id: uid(), exam_year: 5, exam_fee: 3500 },
-    { id: uid(), exam_year: 6, exam_fee: 4000 },
-  ];
-
-  const firstNames = [
-    'Aarav', 'Vivaan', 'Aditya', 'Vihaan', 'Arjun', 'Sai', 'Reyansh', 'Ayaan',
-    'Krishna', 'Ishaan', 'Ananya', 'Diya', 'Saanvi', 'Aanya', 'Priya', 'Meera',
-    'Riya', 'Kavya', 'Tara', 'Nisha', 'Rohan', 'Dev', 'Kabir', 'Aryan', 'Dhruv',
-    'Neha', 'Pooja', 'Shreya', 'Kiara', 'Zara',
-  ];
-  const lastNames = [
-    'Sharma', 'Verma', 'Gupta', 'Singh', 'Kumar', 'Patel', 'Reddy', 'Nair',
-    'Joshi', 'Mehta', 'Iyer', 'Chopra', 'Rao', 'Das', 'Bhat',
-  ];
-  const timings = [
-    'Mon/Wed 4:00 PM', 'Mon/Wed 5:00 PM', 'Tue/Thu 4:00 PM', 'Tue/Thu 5:00 PM',
-    'Tue/Thu 6:00 PM', 'Fri 4:00 PM', 'Sat 10:00 AM', 'Sat 11:00 AM',
-    'Sat 2:00 PM', 'Sun 10:00 AM', 'Sun 11:00 AM',
-  ];
-
-  const pick = <T>(arr: readonly T[]): T => arr[Math.floor(Math.random() * arr.length)];
-  const behaviors: PaymentBehavior[] = ['REGULAR', 'OCCASIONAL', 'FLEXIBLE'];
-  const labels: PaymentLabel[] = ['Regular', 'Occasional', 'Flexible'];
-  const sampleLabels = ['Jan Fee', 'Feb Fee', 'Mar Fee', 'Advance', 'Quarter 1', 'Misc', 'Annual Partial', 'Late Payment'];
-
-  const usedPhones = new Set<string>();
-  const students: Student[] = [];
-
-  for (let i = 0; i < 55; i++) {
-    let phone: string;
-    do { phone = '9' + Math.floor(100000000 + Math.random() * 900000000).toString(); } while (usedPhones.has(phone));
-    usedPhones.add(phone);
-
-    const fn = pick(firstNames);
-    const ln = pick(lastNames);
-    students.push({
-      id: uid(),
-      name: `${fn} ${ln}`,
-      phone,
-      age: Math.floor(Math.random() * 25) + 6,
-      parents_name: `${pick(firstNames)} ${ln}`,
-      instrument: pick(INSTRUMENTS),
-      centre: pick(CENTRES),
-      class_timing: pick(timings),
-      payment_type: pick(behaviors),
-      created_at: new Date(Date.now() - Math.floor(Math.random() * 180 * 86400000)).toISOString(),
-      status: Math.random() > 0.1 ? 'active' : 'inactive',
-    });
-  }
-
-  // Generate irregular payments — random dates, random amounts
-  const now = new Date();
-  const feePayments: FeePayment[] = [];
-
-  for (const s of students) {
-    if (s.status !== 'active') continue;
-
-    const fee = instrumentFees.find(f => f.instrument_name === s.instrument)!;
-    // Each student gets 1-5 random payments in the last 120 days
-    const payCount = Math.floor(Math.random() * 5) + 1;
-    for (let j = 0; j < payCount; j++) {
-      const daysAgo = Math.floor(Math.random() * 120);
-      const payDate = new Date(now.getTime() - daysAgo * 86400000);
-      // Amount can vary: full fee, partial, or extra
-      const variance = 0.7 + Math.random() * 0.6; // 70% to 130% of base
-      const amount = Math.round(fee.monthly_fee * variance / 50) * 50; // round to nearest 50
-
-      feePayments.push({
-        id: uid(),
-        student_id: s.id,
-        amount,
-        payment_date: payDate.toISOString(),
-        payment_type: pick(labels),
-        period_label: pick(sampleLabels),
-        status: Math.random() > 0.15 ? 'Paid' : 'Pending',
-        updated_at: new Date().toISOString(),
-        created_at: new Date().toISOString(),
-      });
-    }
-  }
-
-  // Generate some exam registrations
-  const examRegistrations: ExamRegistration[] = [];
-  const examStudents = students.filter(s => s.status === 'active').slice(0, 15);
-  for (const s of examStudents) {
-    const ey = pick(EXAM_YEARS);
-    const ef = examFees.find(e => e.exam_year === ey)!;
-    examRegistrations.push({
-      id: uid(),
-      student_id: s.id,
-      exam_year: ey,
-      centre: s.centre,
-      exam_fee: ef.exam_fee,
-      payment_status: Math.random() > 0.4 ? 'Paid' : 'Pending',
-      created_at: new Date().toISOString(),
-    });
-  }
-
-  return {
-    students,
-    instrument_fees: instrumentFees,
-    fee_payments: feePayments,
-    exam_fee_structure: examFees,
-    exam_registrations: examRegistrations,
-  };
-}
-
-// ========================
-// CACHE KEYS
-// ========================
-
-const CK = {
-  STUDENTS: 'db:students',
-  INSTRUMENT_FEES: 'db:instrument_fees',
-  FEE_PAYMENTS: 'db:fee_payments',
-  EXAM_STRUCTURE: 'db:exam_structure',
-  EXAM_REGISTRATIONS: 'db:exam_registrations',
-  DASHBOARD: 'db:dashboard',
-};
-
-function invalidateAll() {
-  Object.values(CK).forEach(k => cache.invalidate(k));
-}
+import { INSTRUMENTS, CENTRES } from './types';
 
 // ========================
 // STUDENTS
 // ========================
 
-export function getStudents(filters?: {
+export async function getStudents(filters?: {
   centre?: Centre; instrument?: Instrument; status?: StudentStatus; search?: string;
-}): Student[] {
-  const db = readDB();
-  let result = db.students;
+}): Promise<Student[]> {
+  let query = supabase.from('students').select('*');
 
-  if (filters?.centre) result = result.filter(s => s.centre === filters.centre);
-  if (filters?.instrument) result = result.filter(s => s.instrument === filters.instrument);
-  if (filters?.status) result = result.filter(s => s.status === filters.status);
+  if (filters?.centre) query = query.eq('centre', filters.centre);
+  if (filters?.instrument) query = query.eq('instrument', filters.instrument);
+  if (filters?.status) query = query.eq('status', filters.status);
   if (filters?.search) {
-    const q = filters.search.toLowerCase();
-    result = result.filter(s =>
-      s.name.toLowerCase().includes(q) ||
-      s.phone.includes(q) ||
-      s.parents_name.toLowerCase().includes(q)
-    );
+    const q = `%${filters.search}%`;
+    query = query.or(`name.ilike.${q},phone.ilike.${q},parents_name.ilike.${q}`);
   }
 
-  return result;
+  query = query.order('created_at', { ascending: false });
+
+  const { data, error } = await query;
+  if (error) throw new Error(`Failed to fetch students: ${error.message}`);
+  return (data ?? []) as Student[];
 }
 
-export function getStudentById(id: string): Student | undefined {
-  const db = readDB();
-  return db.students.find(s => s.id === id);
+export async function getStudentById(id: string): Promise<Student | undefined> {
+  const { data, error } = await supabase
+    .from('students')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (error) throw new Error(`Failed to fetch student: ${error.message}`);
+  return (data as Student) ?? undefined;
 }
 
-export function createStudent(data: Omit<Student, 'id' | 'created_at'>): Student {
-  const db = readDB();
-  const student: Student = {
-    ...data,
-    id: uid(),
-    created_at: new Date().toISOString(),
-  };
-  db.students.push(student);
-  writeDB(db);
-  invalidateAll();
-  return student;
+export async function createStudent(data: Omit<Student, 'id' | 'created_at'>): Promise<Student> {
+  const { data: student, error } = await supabase
+    .from('students')
+    .insert({
+      name: data.name,
+      phone: data.phone,
+      age: data.age,
+      parents_name: data.parents_name,
+      instrument: data.instrument,
+      centre: data.centre,
+      class_timing: data.class_timing,
+      payment_type: data.payment_type || 'REGULAR',
+      status: data.status || 'active',
+    })
+    .select()
+    .single();
+
+  if (error) throw new Error(`Failed to create student: ${error.message}`);
+  return student as Student;
 }
 
-export function updateStudent(id: string, updates: Partial<Omit<Student, 'id' | 'created_at'>>): Student | null {
-  const db = readDB();
-  const idx = db.students.findIndex(s => s.id === id);
-  if (idx === -1) return null;
+export async function updateStudent(
+  id: string,
+  updates: Partial<Omit<Student, 'id' | 'created_at'>>
+): Promise<Student | null> {
+  const { data, error } = await supabase
+    .from('students')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single();
 
-  db.students[idx] = { ...db.students[idx], ...updates };
-  writeDB(db);
-  invalidateAll();
-  return db.students[idx];
+  if (error) {
+    if (error.code === 'PGRST116') return null; // no rows matched
+    throw new Error(`Failed to update student: ${error.message}`);
+  }
+  return data as Student;
 }
 
-export function deactivateStudent(id: string): boolean {
-  const db = readDB();
-  const idx = db.students.findIndex(s => s.id === id);
-  if (idx === -1) return false;
-  db.students[idx].status = 'inactive';
-  writeDB(db);
-  invalidateAll();
+export async function deactivateStudent(id: string): Promise<boolean> {
+  const { error, count } = await supabase
+    .from('students')
+    .update({ status: 'inactive' })
+    .eq('id', id);
+
+  if (error) throw new Error(`Failed to deactivate student: ${error.message}`);
+  return (count ?? 0) > 0;
+}
+
+export async function deleteStudent(id: string): Promise<boolean> {
+  // CASCADE on foreign keys handles fee_payments and exam_registrations
+  const { error } = await supabase
+    .from('students')
+    .delete()
+    .eq('id', id);
+
+  if (error) throw new Error(`Failed to delete student: ${error.message}`);
   return true;
 }
 
@@ -310,83 +109,147 @@ export function deactivateStudent(id: string): boolean {
 // INSTRUMENT FEES
 // ========================
 
-export function getInstrumentFees(): InstrumentFee[] {
-  const db = readDB();
-  return db.instrument_fees;
+export async function getInstrumentFees(): Promise<InstrumentFee[]> {
+  const { data, error } = await supabase
+    .from('instrument_fees')
+    .select('*')
+    .order('instrument_name');
+
+  if (error) throw new Error(`Failed to fetch instrument fees: ${error.message}`);
+  return (data ?? []) as InstrumentFee[];
 }
 
-export function updateInstrumentFee(id: string, monthly_fee: number): InstrumentFee | null {
-  const db = readDB();
-  const idx = db.instrument_fees.findIndex(f => f.id === id);
-  if (idx === -1) return null;
-  db.instrument_fees[idx].monthly_fee = monthly_fee;
-  writeDB(db);
-  invalidateAll();
-  return db.instrument_fees[idx];
+export async function updateInstrumentFee(id: string, monthly_fee: number): Promise<InstrumentFee | null> {
+  const { data, error } = await supabase
+    .from('instrument_fees')
+    .update({ monthly_fee })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw new Error(`Failed to update instrument fee: ${error.message}`);
+  }
+  return data as InstrumentFee;
 }
 
-export function getFeeForInstrument(instrument: Instrument): number {
-  const db = readDB();
-  const fee = db.instrument_fees.find(f => f.instrument_name === instrument);
-  return fee?.monthly_fee ?? 0;
+export async function getFeeForInstrument(instrument: Instrument): Promise<number> {
+  const { data, error } = await supabase
+    .from('instrument_fees')
+    .select('monthly_fee')
+    .eq('instrument_name', instrument)
+    .maybeSingle();
+
+  if (error) throw new Error(`Failed to fetch fee for instrument: ${error.message}`);
+  return data?.monthly_fee ?? 0;
 }
 
 // ========================
 // FEE PAYMENTS
 // ========================
 
-export function getFeePayments(filters?: {
-  student_id?: string; payment_type?: PaymentLabel; status?: PaymentStatus; centre?: Centre; instrument?: Instrument;
-}): (FeePayment & { student_name: string; student_phone: string; student_instrument: Instrument; student_centre: Centre; student_payment_type?: PaymentBehavior })[] {
-  const db = readDB();
-  let payments = db.fee_payments;
+export async function getFeePayments(filters?: {
+  student_id?: string;
+  payment_type?: PaymentLabel;
+  status?: PaymentStatus;
+  centre?: Centre;
+  instrument?: Instrument;
+}): Promise<(FeePayment & {
+  student_name: string;
+  student_phone: string;
+  student_instrument: Instrument;
+  student_centre: Centre;
+  student_payment_type?: PaymentBehavior;
+})[]> {
+  // Use a join query to get student info alongside payments
+  let query = supabase
+    .from('fee_payments')
+    .select(`
+      *,
+      students!inner (
+        name,
+        phone,
+        instrument,
+        centre,
+        payment_type
+      )
+    `);
 
-  if (filters?.student_id) payments = payments.filter(p => p.student_id === filters.student_id);
-  if (filters?.payment_type) payments = payments.filter(p => p.payment_type === filters.payment_type);
-  if (filters?.status) payments = payments.filter(p => p.status === filters.status);
+  if (filters?.student_id) query = query.eq('student_id', filters.student_id);
+  if (filters?.payment_type) query = query.eq('payment_type', filters.payment_type);
+  if (filters?.status) query = query.eq('status', filters.status);
+  if (filters?.centre) query = query.eq('students.centre', filters.centre);
+  if (filters?.instrument) query = query.eq('students.instrument', filters.instrument);
 
-  const studentMap = new Map(db.students.map(s => [s.id, s]));
-  let joined = payments.map(p => {
-    const s = studentMap.get(p.student_id);
-    return {
-      ...p,
-      student_name: s?.name ?? 'Unknown',
-      student_phone: s?.phone ?? '',
-      student_instrument: (s?.instrument ?? 'Guitar') as Instrument,
-      student_centre: (s?.centre ?? 'Prayag Sangeet Samiti') as Centre,
-      student_payment_type: s?.payment_type,
-    };
-  });
+  query = query.order('payment_date', { ascending: false });
 
-  if (filters?.centre) joined = joined.filter(j => j.student_centre === filters.centre);
-  if (filters?.instrument) joined = joined.filter(j => j.student_instrument === filters.instrument);
+  const { data, error } = await query;
+  if (error) throw new Error(`Failed to fetch fee payments: ${error.message}`);
 
-  joined.sort((a, b) => new Date(b.payment_date).getTime() - new Date(a.payment_date).getTime());
-
-  return joined;
+  // Transform the joined data to match the expected flat format
+  return (data ?? []).map((row: any) => ({
+    id: row.id,
+    student_id: row.student_id,
+    amount: row.amount,
+    payment_date: row.payment_date,
+    payment_type: row.payment_type,
+    period_label: row.period_label,
+    status: row.status,
+    notes: row.notes,
+    updated_at: row.updated_at,
+    created_at: row.created_at,
+    student_name: row.students?.name ?? 'Unknown',
+    student_phone: row.students?.phone ?? '',
+    student_instrument: (row.students?.instrument ?? 'Guitar') as Instrument,
+    student_centre: (row.students?.centre ?? 'Prayag Sangeet Samiti') as Centre,
+    student_payment_type: row.students?.payment_type as PaymentBehavior | undefined,
+  }));
 }
 
-export function createFeePayment(data: Omit<FeePayment, 'id' | 'created_at' | 'updated_at'>): FeePayment {
-  const db = readDB();
-  const payment: FeePayment = {
-    ...data,
-    id: uid(),
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  };
-  db.fee_payments.push(payment);
-  writeDB(db);
-  invalidateAll();
-  return payment;
+export async function createFeePayment(
+  data: Omit<FeePayment, 'id' | 'created_at' | 'updated_at'>
+): Promise<FeePayment> {
+  const now = new Date().toISOString();
+  const { data: payment, error } = await supabase
+    .from('fee_payments')
+    .insert({
+      student_id: data.student_id,
+      amount: data.amount,
+      payment_date: data.payment_date,
+      payment_type: data.payment_type,
+      period_label: data.period_label || null,
+      status: data.status,
+      notes: data.notes || null,
+      updated_at: now,
+    })
+    .select()
+    .single();
+
+  if (error) throw new Error(`Failed to create fee payment: ${error.message}`);
+  return payment as FeePayment;
 }
 
-export function updatePaymentStatus(id: string, updates: Partial<FeePayment>): boolean {
-  const db = readDB();
-  const idx = db.fee_payments.findIndex(p => p.id === id);
-  if (idx === -1) return false;
-  db.fee_payments[idx] = { ...db.fee_payments[idx], ...updates, updated_at: new Date().toISOString() };
-  writeDB(db);
-  invalidateAll();
+export async function updatePaymentStatus(
+  id: string,
+  updates: Partial<FeePayment>
+): Promise<boolean> {
+  const { error, count } = await supabase
+    .from('fee_payments')
+    .update({ ...updates, updated_at: new Date().toISOString() })
+    .eq('id', id);
+
+  if (error) throw new Error(`Failed to update payment: ${error.message}`);
+  return true;
+}
+
+export async function deleteFeePayment(id: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('fee_payments')
+    .delete()
+    .eq('id', id);
+
+  if (error) throw new Error(`Failed to delete fee payment: ${error.message}`);
   return true;
 }
 
@@ -394,79 +257,130 @@ export function updatePaymentStatus(id: string, updates: Partial<FeePayment>): b
 // EXAM FEE STRUCTURE
 // ========================
 
-export function getExamFeeStructure(): ExamFeeStructure[] {
-  const db = readDB();
-  return db.exam_fee_structure;
+export async function getExamFeeStructure(): Promise<ExamFeeStructure[]> {
+  const { data, error } = await supabase
+    .from('exam_fee_structure')
+    .select('*')
+    .order('exam_year');
+
+  if (error) throw new Error(`Failed to fetch exam fee structure: ${error.message}`);
+  return (data ?? []) as ExamFeeStructure[];
 }
 
-export function updateExamFee(id: string, exam_fee: number): ExamFeeStructure | null {
-  const db = readDB();
-  const idx = db.exam_fee_structure.findIndex(e => e.id === id);
-  if (idx === -1) return null;
-  db.exam_fee_structure[idx].exam_fee = exam_fee;
-  writeDB(db);
-  invalidateAll();
-  return db.exam_fee_structure[idx];
+export async function updateExamFee(id: string, exam_fee: number): Promise<ExamFeeStructure | null> {
+  const { data, error } = await supabase
+    .from('exam_fee_structure')
+    .update({ exam_fee })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw new Error(`Failed to update exam fee: ${error.message}`);
+  }
+  return data as ExamFeeStructure;
 }
 
-export function getFeeForExamYear(examYear: ExamYear): number {
-  const db = readDB();
-  const entry = db.exam_fee_structure.find(e => e.exam_year === examYear);
-  return entry?.exam_fee ?? 0;
+export async function getFeeForExamYear(examYear: ExamYear): Promise<number> {
+  const { data, error } = await supabase
+    .from('exam_fee_structure')
+    .select('exam_fee')
+    .eq('exam_year', examYear)
+    .maybeSingle();
+
+  if (error) throw new Error(`Failed to fetch fee for exam year: ${error.message}`);
+  return data?.exam_fee ?? 0;
 }
 
 // ========================
 // EXAM REGISTRATIONS
 // ========================
 
-export function getExamRegistrations(filters?: {
-  centre?: Centre; payment_status?: ExamPaymentStatus;
-}): (ExamRegistration & { student_name: string; student_phone: string; student_instrument: Instrument })[] {
-  const db = readDB();
-  let regs = db.exam_registrations;
+export async function getExamRegistrations(filters?: {
+  centre?: Centre;
+  payment_status?: ExamPaymentStatus;
+}): Promise<(ExamRegistration & {
+  student_name: string;
+  student_phone: string;
+  student_instrument: Instrument;
+})[]> {
+  let query = supabase
+    .from('exam_registrations')
+    .select(`
+      *,
+      students!inner (
+        name,
+        phone,
+        instrument
+      )
+    `);
 
-  if (filters?.centre) regs = regs.filter(r => r.centre === filters.centre);
-  if (filters?.payment_status) regs = regs.filter(r => r.payment_status === filters.payment_status);
+  if (filters?.centre) query = query.eq('centre', filters.centre);
+  if (filters?.payment_status) query = query.eq('payment_status', filters.payment_status);
 
-  const studentMap = new Map(db.students.map(s => [s.id, s]));
-  return regs.map(r => {
-    const s = studentMap.get(r.student_id);
-    return {
-      ...r,
-      student_name: s?.name ?? 'Unknown',
-      student_phone: s?.phone ?? '',
-      student_instrument: (s?.instrument ?? 'Guitar') as Instrument,
-    };
-  });
+  query = query.order('created_at', { ascending: false });
+
+  const { data, error } = await query;
+  if (error) throw new Error(`Failed to fetch exam registrations: ${error.message}`);
+
+  return (data ?? []).map((row: any) => ({
+    id: row.id,
+    student_id: row.student_id,
+    exam_year: row.exam_year,
+    centre: row.centre,
+    exam_fee: row.exam_fee,
+    payment_status: row.payment_status,
+    created_at: row.created_at,
+    student_name: row.students?.name ?? 'Unknown',
+    student_phone: row.students?.phone ?? '',
+    student_instrument: (row.students?.instrument ?? 'Guitar') as Instrument,
+  }));
 }
 
-export function createExamRegistration(data: {
-  student_id: string; exam_year: ExamYear; centre: Centre;
-}): ExamRegistration {
-  const db = readDB();
-  const examFee = getFeeForExamYear(data.exam_year);
-  const reg: ExamRegistration = {
-    id: uid(),
-    student_id: data.student_id,
-    exam_year: data.exam_year,
-    centre: data.centre,
-    exam_fee: examFee,
-    payment_status: 'Pending',
-    created_at: new Date().toISOString(),
-  };
-  db.exam_registrations.push(reg);
-  writeDB(db);
-  invalidateAll();
-  return reg;
+export async function createExamRegistration(data: {
+  student_id: string;
+  exam_year: ExamYear;
+  centre: Centre;
+}): Promise<ExamRegistration> {
+  const examFee = await getFeeForExamYear(data.exam_year);
+
+  const { data: reg, error } = await supabase
+    .from('exam_registrations')
+    .insert({
+      student_id: data.student_id,
+      exam_year: data.exam_year,
+      centre: data.centre,
+      exam_fee: examFee,
+      payment_status: 'Pending',
+    })
+    .select()
+    .single();
+
+  if (error) throw new Error(`Failed to create exam registration: ${error.message}`);
+  return reg as ExamRegistration;
 }
 
-export function updateExamPaymentStatus(id: string, payment_status: ExamPaymentStatus): boolean {
-  const db = readDB();
-  const idx = db.exam_registrations.findIndex(r => r.id === id);
-  if (idx === -1) return false;
-  db.exam_registrations[idx].payment_status = payment_status;
-  writeDB(db);
-  invalidateAll();
+export async function updateExamPaymentStatus(
+  id: string,
+  payment_status: ExamPaymentStatus
+): Promise<boolean> {
+  const { error } = await supabase
+    .from('exam_registrations')
+    .update({ payment_status })
+    .eq('id', id);
+
+  if (error) throw new Error(`Failed to update exam payment status: ${error.message}`);
+  return true;
+}
+
+export async function deleteExamRegistration(id: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('exam_registrations')
+    .delete()
+    .eq('id', id);
+
+  if (error) throw new Error(`Failed to delete exam registration: ${error.message}`);
   return true;
 }
 
@@ -474,60 +388,80 @@ export function updateExamPaymentStatus(id: string, payment_status: ExamPaymentS
 // DASHBOARD STATS
 // ========================
 
-export function getDashboardStats(): DashboardStats {
-  const cached = cache.get<DashboardStats>(CK.DASHBOARD);
-  if (cached) return cached;
+export async function getDashboardStats(): Promise<DashboardStats> {
+  // Fetch all active students
+  const { data: activeStudents, error: studentsErr } = await supabase
+    .from('students')
+    .select('*')
+    .eq('status', 'active');
 
-  const db = readDB();
-  const activeStudents = db.students.filter(s => s.status === 'active');
+  if (studentsErr) throw new Error(`Failed to fetch students: ${studentsErr.message}`);
+  const students = (activeStudents ?? []) as Student[];
 
+  // Students by centre
   const studentsByCentre: Record<string, number> = {};
   for (const c of CENTRES) {
-    studentsByCentre[c] = activeStudents.filter(s => s.centre === c).length;
+    studentsByCentre[c] = students.filter(s => s.centre === c).length;
   }
 
+  // Students by instrument
   const studentsByInstrument: Record<string, number> = {};
   for (const i of INSTRUMENTS) {
-    studentsByInstrument[i] = activeStudents.filter(s => s.instrument === i).length;
+    studentsByInstrument[i] = students.filter(s => s.instrument === i).length;
   }
 
-  // All-time collected
-  const paidPayments = db.fee_payments.filter(p => p.status === 'Paid');
-  const totalCollected = paidPayments.reduce((sum, p) => sum + p.amount, 0);
+  // Fetch all fee payments
+  const { data: allPayments, error: paymentsErr } = await supabase
+    .from('fee_payments')
+    .select('*');
+
+  if (paymentsErr) throw new Error(`Failed to fetch payments: ${paymentsErr.message}`);
+  const payments = (allPayments ?? []) as FeePayment[];
+
+  // Total collected (all time, Paid only)
+  const paidPayments = payments.filter(p => p.status === 'Paid');
+  const totalCollected = paidPayments.reduce((sum, p) => sum + Number(p.amount), 0);
 
   // Last 30 days collected
   const now = new Date();
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400000);
   const last30 = paidPayments.filter(p => new Date(p.payment_date) >= thirtyDaysAgo);
-  const last30DaysCollected = last30.reduce((sum, p) => sum + p.amount, 0);
+  const last30DaysCollected = last30.reduce((sum, p) => sum + Number(p.amount), 0);
 
   // Students with no payment in last 30 days
   const recentPayerIds = new Set(
-    db.fee_payments
+    payments
       .filter(p => new Date(p.payment_date) >= thirtyDaysAgo)
       .map(p => p.student_id)
   );
-  const studentsNoPay30Days = activeStudents.filter(s => !recentPayerIds.has(s.id)).length;
+  const studentsNoPay30Days = students.filter(s => !recentPayerIds.has(s.id)).length;
 
   // Average payment per student (all time, active only)
-  const activeIds = new Set(activeStudents.map(s => s.id));
+  const activeIds = new Set(students.map(s => s.id));
   const activePayments = paidPayments.filter(p => activeIds.has(p.student_id));
-  const avgPaymentPerStudent = activeStudents.length > 0
-    ? Math.round(activePayments.reduce((sum, p) => sum + p.amount, 0) / activeStudents.length)
+  const avgPaymentPerStudent = students.length > 0
+    ? Math.round(activePayments.reduce((sum, p) => sum + Number(p.amount), 0) / students.length)
     : 0;
 
   // Exam stats
-  const examFeesCollected = db.exam_registrations
+  const { data: examRegs, error: examErr } = await supabase
+    .from('exam_registrations')
+    .select('*');
+
+  if (examErr) throw new Error(`Failed to fetch exam registrations: ${examErr.message}`);
+  const regs = (examRegs ?? []) as ExamRegistration[];
+
+  const examFeesCollected = regs
     .filter(r => r.payment_status === 'Paid')
-    .reduce((sum, r) => sum + r.exam_fee, 0);
-  const examFeesPending = db.exam_registrations
+    .reduce((sum, r) => sum + Number(r.exam_fee), 0);
+  const examFeesPending = regs
     .filter(r => r.payment_status === 'Pending')
-    .reduce((sum, r) => sum + r.exam_fee, 0);
+    .reduce((sum, r) => sum + Number(r.exam_fee), 0);
 
-  const uniqueExamStudents = new Set(db.exam_registrations.map(r => r.student_id));
+  const uniqueExamStudents = new Set(regs.map(r => r.student_id));
 
-  const stats: DashboardStats = {
-    totalStudents: activeStudents.length,
+  return {
+    totalStudents: students.length,
     studentsByCentre,
     studentsByInstrument,
     studentsInExams: uniqueExamStudents.size,
@@ -538,47 +472,4 @@ export function getDashboardStats(): DashboardStats {
     examFeesCollected,
     examFeesPending,
   };
-
-  cache.set(CK.DASHBOARD, stats, 30);
-  return stats;
-}
-
-// ========================
-// DELETION OPERATIONS (ADMIN)
-// ========================
-
-export function deleteStudent(id: string): boolean {
-  const db = readDB();
-  const idx = db.students.findIndex(s => s.id === id);
-  if (idx === -1) return false;
-
-  db.fee_payments = db.fee_payments.filter(p => p.student_id !== id);
-  db.exam_registrations = db.exam_registrations.filter(r => r.student_id !== id);
-
-  db.students.splice(idx, 1);
-  writeDB(db);
-  invalidateAll();
-  return true;
-}
-
-export function deleteFeePayment(id: string): boolean {
-  const db = readDB();
-  const idx = db.fee_payments.findIndex(p => p.id === id);
-  if (idx === -1) return false;
-
-  db.fee_payments.splice(idx, 1);
-  writeDB(db);
-  invalidateAll();
-  return true;
-}
-
-export function deleteExamRegistration(id: string): boolean {
-  const db = readDB();
-  const idx = db.exam_registrations.findIndex(r => r.id === id);
-  if (idx === -1) return false;
-
-  db.exam_registrations.splice(idx, 1);
-  writeDB(db);
-  invalidateAll();
-  return true;
 }

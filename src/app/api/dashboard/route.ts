@@ -4,7 +4,7 @@ import { getDashboardStats } from '@/lib/db';
 
 export async function GET() {
   try {
-    const stats = getDashboardStats();
+    const stats = await getDashboardStats();
     return NextResponse.json({ stats });
   } catch (error) {
     console.error('[API] Error fetching dashboard stats:', error);

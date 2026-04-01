@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
     const status = url.searchParams.get('status') as StudentStatus | null;
     const search = url.searchParams.get('search') || undefined;
 
-    const students = getStudents({
+    const students = await getStudents({
       centre: centre || undefined,
       instrument: instrument || undefined,
       status: status || undefined,
@@ -57,12 +57,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Check for duplicate phone
-    const existing = getStudents({ search: phone });
+    const existing = await getStudents({ search: phone });
     if (existing.some(s => s.phone === phone)) {
       return NextResponse.json({ error: 'A student with this phone number already exists' }, { status: 409 });
     }
 
-    const student = createStudent({
+    const student = await createStudent({
       name: name.trim(),
       phone: phone.trim(),
       age,
@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
       status: 'active',
     });
 
-    const monthlyFee = getFeeForInstrument(instrument);
+    const monthlyFee = await getFeeForInstrument(instrument);
 
     return NextResponse.json({ student, monthlyFee }, { status: 201 });
   } catch (error) {

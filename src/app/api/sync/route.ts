@@ -26,7 +26,7 @@ export async function POST() {
       });
     }
 
-    const existingStudents = getStudents();
+    const existingStudents = await getStudents();
     const existingPhones = new Set(existingStudents.map((s) => s.phone));
 
     let imported = 0;
@@ -40,7 +40,7 @@ export async function POST() {
       }
 
       try {
-        createStudent({
+        await createStudent({
           name: entry.name,
           phone: entry.phone,
           age: entry.age,
