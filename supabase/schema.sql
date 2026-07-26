@@ -92,12 +92,11 @@ CREATE POLICY "Allow all on exam_registrations" ON exam_registrations FOR ALL US
 -- SEED: Instrument fees (if empty)
 -- ============================================================
 INSERT INTO instrument_fees (instrument_name, monthly_fee) VALUES
-  ('Guitar', 1200),
-  ('Piano', 1500),
-  ('Tabla', 1000),
-  ('Vocal', 900),
-  ('Keyboard', 1300),
-  ('Violin', 1400)
+  ('Vocal', 700),
+  ('Harmonium', 700),
+  ('Tabla', 700),
+  ('Piano', 700),
+  ('Guitar', 700)
 ON CONFLICT (instrument_name) DO NOTHING;
 
 -- ============================================================

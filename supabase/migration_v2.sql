@@ -44,11 +44,17 @@ UPDATE exam_fee_structure SET exam_fee = 9500 WHERE exam_year = 5;
 UPDATE exam_fee_structure SET exam_fee = 10000 WHERE exam_year = 6;
 
 -- ============================================================
--- 4. UPDATE instrument_fees — add Harmonium, set all to ₹700
+-- 4. UPDATE instrument_fees — add Harmonium, remove Keyboard & Violin, set all to ₹700
 -- ============================================================
 INSERT INTO instrument_fees (instrument_name, monthly_fee) VALUES
   ('Harmonium', 700)
 ON CONFLICT (instrument_name) DO NOTHING;
+
+-- Remove deprecated subjects (Keyboard, Violin)
+DELETE FROM instrument_fees WHERE instrument_name IN ('Keyboard', 'Violin');
+
+-- Migrate existing student records with old subjects to Vocal
+UPDATE students SET instrument = 'Vocal' WHERE instrument IN ('Keyboard', 'Violin');
 
 -- Set all monthly fees to ₹700 (flat rate for all subjects)
 UPDATE instrument_fees SET monthly_fee = 700;
