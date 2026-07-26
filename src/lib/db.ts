@@ -119,7 +119,28 @@ export async function getInstrumentFees(): Promise<InstrumentFee[]> {
     .order('instrument_name');
 
   if (error) throw new Error(`Failed to fetch instrument fees: ${error.message}`);
-  return (data ?? []) as InstrumentFee[];
+
+  // Delete outdated instruments (Keyboard, Violin) from DB if present
+  const outdated = (data ?? []).filter(item => !INSTRUMENTS.includes(item.instrument_name as any));
+  if (outdated.length > 0) {
+    const outdatedIds = outdated.map(o => o.id);
+    await supabase.from('instrument_fees').delete().in('id', outdatedIds);
+  }
+
+  // Ensure all valid subjects (including Harmonium) exist in DB
+  const existingNames = new Set((data ?? []).map(i => i.instrument_name));
+  const missing = INSTRUMENTS.filter(inst => !existingNames.has(inst));
+  if (missing.length > 0) {
+    const toInsert = missing.map(inst => ({ instrument_name: inst, monthly_fee: 700 }));
+    await supabase.from('instrument_fees').insert(toInsert);
+    const { data: updatedData } = await supabase
+      .from('instrument_fees')
+      .select('*')
+      .order('instrument_name');
+    return ((updatedData ?? []) as InstrumentFee[]).filter(i => INSTRUMENTS.includes(i.instrument_name as any));
+  }
+
+  return ((data ?? []) as InstrumentFee[]).filter(item => INSTRUMENTS.includes(item.instrument_name as any));
 }
 
 export async function updateInstrumentFee(id: string, monthly_fee: number): Promise<InstrumentFee | null> {

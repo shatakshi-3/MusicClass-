@@ -74,21 +74,21 @@ export default function FeeStructurePage() {
   return (
     <div>
       <div className="page-header">
-        <h2 className="page-title">Instrument Fee Structure</h2>
-        <p className="page-subtitle">Manage monthly fees for each instrument</p>
+        <h2 className="page-title">Subject Fee Structure</h2>
+        <p className="page-subtitle">Manage monthly fees for each subject</p>
       </div>
 
       {message && <div className="alert-info">{message}</div>}
 
       <div className="student-table-wrapper">
         <div className="table-meta">
-          <span className="table-count">{fees.length} instrument{fees.length !== 1 ? 's' : ''}</span>
+          <span className="table-count">{fees.length} subject{fees.length !== 1 ? 's' : ''}</span>
         </div>
         <div className="table-container">
           <table className="data-table">
             <thead>
               <tr>
-                <th>Instrument</th>
+                <th>Subject</th>
                 <th>Monthly Fee</th>
                 <th style={{ width: '160px' }}>Actions</th>
               </tr>
