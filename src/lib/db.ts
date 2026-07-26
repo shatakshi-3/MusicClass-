@@ -6,7 +6,7 @@ import type {
   Student, InstrumentFee, FeePayment,
   ExamFeeStructure, ExamRegistration, DashboardStats,
   Instrument, Centre, PaymentStatus, PaymentLabel, PaymentBehavior,
-  ExamPaymentStatus, ExamYear, StudentStatus,
+  ExamPaymentStatus, ExamYear, StudentStatus, StudentType,
 } from './types';
 import { INSTRUMENTS, CENTRES } from './types';
 
@@ -15,13 +15,14 @@ import { INSTRUMENTS, CENTRES } from './types';
 // ========================
 
 export async function getStudents(filters?: {
-  centre?: Centre; instrument?: Instrument; status?: StudentStatus; search?: string;
+  centre?: Centre; instrument?: Instrument; status?: StudentStatus; search?: string; student_type?: StudentType;
 }): Promise<Student[]> {
   let query = supabase.from('students').select('*');
 
   if (filters?.centre) query = query.eq('centre', filters.centre);
   if (filters?.instrument) query = query.eq('instrument', filters.instrument);
   if (filters?.status) query = query.eq('status', filters.status);
+  if (filters?.student_type) query = query.eq('student_type', filters.student_type);
   if (filters?.search) {
     const q = `%${filters.search}%`;
     query = query.or(`name.ilike.${q},phone.ilike.${q},parents_name.ilike.${q}`);
@@ -57,6 +58,8 @@ export async function createStudent(data: Omit<Student, 'id' | 'created_at'>): P
       centre: data.centre,
       class_timing: data.class_timing,
       payment_type: data.payment_type || 'REGULAR',
+      student_type: data.student_type || 'MONTHLY',
+      exam_year: data.exam_year || null,
       status: data.status || 'active',
     })
     .select()
@@ -161,6 +164,8 @@ export async function getFeePayments(filters?: {
   student_instrument: Instrument;
   student_centre: Centre;
   student_payment_type?: PaymentBehavior;
+  student_type?: StudentType;
+  student_exam_year?: ExamYear | null;
 })[]> {
   // Use a join query to get student info alongside payments
   let query = supabase
@@ -172,7 +177,9 @@ export async function getFeePayments(filters?: {
         phone,
         instrument,
         centre,
-        payment_type
+        payment_type,
+        student_type,
+        exam_year
       )
     `);
 
@@ -197,6 +204,11 @@ export async function getFeePayments(filters?: {
     period_label: row.period_label,
     status: row.status,
     notes: row.notes,
+    total_fee: row.total_fee ?? 0,
+    amount_paid: row.amount_paid ?? 0,
+    remaining_balance: row.remaining_balance ?? 0,
+    installment_number: row.installment_number ?? 1,
+    payment_mode: row.payment_mode,
     updated_at: row.updated_at,
     created_at: row.created_at,
     student_name: row.students?.name ?? 'Unknown',
@@ -204,6 +216,8 @@ export async function getFeePayments(filters?: {
     student_instrument: (row.students?.instrument ?? 'Guitar') as Instrument,
     student_centre: (row.students?.centre ?? 'Prayag Sangeet Samiti') as Centre,
     student_payment_type: row.students?.payment_type as PaymentBehavior | undefined,
+    student_type: row.students?.student_type as StudentType | undefined,
+    student_exam_year: row.students?.exam_year as ExamYear | null | undefined,
   }));
 }
 
@@ -221,6 +235,11 @@ export async function createFeePayment(
       period_label: data.period_label || null,
       status: data.status,
       notes: data.notes || null,
+      total_fee: data.total_fee ?? 0,
+      amount_paid: data.amount_paid ?? 0,
+      remaining_balance: data.remaining_balance ?? 0,
+      installment_number: data.installment_number ?? 1,
+      payment_mode: data.payment_mode || null,
       updated_at: now,
     })
     .select()
@@ -228,6 +247,19 @@ export async function createFeePayment(
 
   if (error) throw new Error(`Failed to create fee payment: ${error.message}`);
   return payment as FeePayment;
+}
+
+export async function updateFeePayment(
+  id: string,
+  updates: Partial<FeePayment>
+): Promise<boolean> {
+  const { error } = await supabase
+    .from('fee_payments')
+    .update({ ...updates, updated_at: new Date().toISOString() })
+    .eq('id', id);
+
+  if (error) throw new Error(`Failed to update payment: ${error.message}`);
+  return true;
 }
 
 export async function updatePaymentStatus(
@@ -251,6 +283,21 @@ export async function deleteFeePayment(id: string): Promise<boolean> {
 
   if (error) throw new Error(`Failed to delete fee payment: ${error.message}`);
   return true;
+}
+
+// Get existing payment record for an exam student (to avoid duplicates)
+export async function getExamPaymentForStudent(studentId: string): Promise<FeePayment | null> {
+  const { data, error } = await supabase
+    .from('fee_payments')
+    .select('*')
+    .eq('student_id', studentId)
+    .eq('payment_type', 'Regular')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw new Error(`Failed to fetch exam payment: ${error.message}`);
+  return data as FeePayment | null;
 }
 
 // ========================
@@ -331,6 +378,9 @@ export async function getExamRegistrations(filters?: {
     centre: row.centre,
     exam_fee: row.exam_fee,
     payment_status: row.payment_status,
+    amount_paid: row.amount_paid ?? 0,
+    remaining_balance: row.remaining_balance ?? 0,
+    installment_number: row.installment_number ?? 0,
     created_at: row.created_at,
     student_name: row.students?.name ?? 'Unknown',
     student_phone: row.students?.phone ?? '',
@@ -353,12 +403,28 @@ export async function createExamRegistration(data: {
       centre: data.centre,
       exam_fee: examFee,
       payment_status: 'Pending',
+      amount_paid: 0,
+      remaining_balance: examFee,
+      installment_number: 0,
     })
     .select()
     .single();
 
   if (error) throw new Error(`Failed to create exam registration: ${error.message}`);
   return reg as ExamRegistration;
+}
+
+export async function updateExamRegistration(
+  id: string,
+  updates: Partial<ExamRegistration>
+): Promise<boolean> {
+  const { error } = await supabase
+    .from('exam_registrations')
+    .update(updates)
+    .eq('id', id);
+
+  if (error) throw new Error(`Failed to update exam registration: ${error.message}`);
+  return true;
 }
 
 export async function updateExamPaymentStatus(
@@ -410,6 +476,10 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     studentsByInstrument[i] = students.filter(s => s.instrument === i).length;
   }
 
+  // Monthly vs Exam students
+  const monthlyStudents = students.filter(s => s.student_type === 'MONTHLY').length;
+  const examStudents = students.filter(s => s.student_type === 'EXAM').length;
+
   // Fetch all fee payments
   const { data: allPayments, error: paymentsErr } = await supabase
     .from('fee_payments')
@@ -420,13 +490,13 @@ export async function getDashboardStats(): Promise<DashboardStats> {
 
   // Total collected (all time, Paid only)
   const paidPayments = payments.filter(p => p.status === 'Paid');
-  const totalCollected = paidPayments.reduce((sum, p) => sum + Number(p.amount), 0);
+  const totalCollected = paidPayments.reduce((sum, p) => sum + Number(p.amount_paid || p.amount), 0);
 
   // Last 30 days collected
   const now = new Date();
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400000);
   const last30 = paidPayments.filter(p => new Date(p.payment_date) >= thirtyDaysAgo);
-  const last30DaysCollected = last30.reduce((sum, p) => sum + Number(p.amount), 0);
+  const last30DaysCollected = last30.reduce((sum, p) => sum + Number(p.amount_paid || p.amount), 0);
 
   // Students with no payment in last 30 days
   const recentPayerIds = new Set(
@@ -440,7 +510,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   const activeIds = new Set(students.map(s => s.id));
   const activePayments = paidPayments.filter(p => activeIds.has(p.student_id));
   const avgPaymentPerStudent = students.length > 0
-    ? Math.round(activePayments.reduce((sum, p) => sum + Number(p.amount), 0) / students.length)
+    ? Math.round(activePayments.reduce((sum, p) => sum + Number(p.amount_paid || p.amount), 0) / students.length)
     : 0;
 
   // Exam stats
@@ -451,25 +521,61 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   if (examErr) throw new Error(`Failed to fetch exam registrations: ${examErr.message}`);
   const regs = (examRegs ?? []) as ExamRegistration[];
 
-  const examFeesCollected = regs
-    .filter(r => r.payment_status === 'Paid')
-    .reduce((sum, r) => sum + Number(r.exam_fee), 0);
-  const examFeesPending = regs
-    .filter(r => r.payment_status === 'Pending')
-    .reduce((sum, r) => sum + Number(r.exam_fee), 0);
+  const examFeesCollected = regs.reduce((sum, r) => sum + Number(r.amount_paid || 0), 0);
+  const examFeesPending = regs.reduce((sum, r) => sum + Number(r.remaining_balance || 0), 0);
 
   const uniqueExamStudents = new Set(regs.map(r => r.student_id));
 
+  // Pending fees (from fee_payments + exam_registrations)
+  const pendingFromPayments = payments
+    .filter(p => p.status !== 'Paid')
+    .reduce((sum, p) => sum + Number(p.remaining_balance || 0), 0);
+  const pendingFees = pendingFromPayments + examFeesPending;
+
+  // Fully paid students (all payments are Paid)
+  const studentPaymentGroups = new Map<string, FeePayment[]>();
+  for (const p of payments) {
+    const existing = studentPaymentGroups.get(p.student_id) || [];
+    existing.push(p);
+    studentPaymentGroups.set(p.student_id, existing);
+  }
+
+  let fullyPaidStudents = 0;
+  let partiallyPaidStudents = 0;
+  for (const [, studentPayments] of studentPaymentGroups) {
+    const allPaid = studentPayments.every(p => p.status === 'Paid');
+    const anyPartial = studentPayments.some(p => p.status === 'Partially Paid');
+    if (allPaid) {
+      fullyPaidStudents++;
+    } else if (anyPartial) {
+      partiallyPaidStudents++;
+    }
+  }
+
+  // Also check exam registrations
+  for (const reg of regs) {
+    if (reg.payment_status === 'Paid' && !studentPaymentGroups.has(reg.student_id)) {
+      fullyPaidStudents++;
+    } else if (reg.payment_status === 'Partially Paid') {
+      partiallyPaidStudents++;
+    }
+  }
+
   return {
     totalStudents: students.length,
+    monthlyStudents,
+    examStudents,
     studentsByCentre,
     studentsByInstrument,
     studentsInExams: uniqueExamStudents.size,
-    totalCollected,
+    totalCollected: totalCollected + examFeesCollected,
     last30DaysCollected,
     studentsNoPay30Days,
     avgPaymentPerStudent,
     examFeesCollected,
     examFeesPending,
+    pendingFees,
+    fullyPaidStudents,
+    partiallyPaidStudents,
   };
 }

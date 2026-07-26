@@ -2,9 +2,11 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import FeeStatusBadge from '@/components/FeeStatusBadge';
+import EditPaymentModal from '@/components/EditPaymentModal';
+import type { ExtendedFeePayment } from '@/components/EditPaymentModal';
 import StatCard from '@/components/StatCard';
 import { CardSkeleton, TableSkeleton } from '@/components/LoadingSkeleton';
-import type { Instrument, Centre, PaymentStatus, PaymentLabel, PaymentBehavior, Student } from '@/lib/types';
+import type { Instrument, Centre, PaymentStatus, PaymentLabel, PaymentBehavior, Student, StudentType, ExamYear } from '@/lib/types';
 import { INSTRUMENTS, CENTRES, PAYMENT_LABELS, PAYMENT_STATUSES } from '@/lib/types';
 
 interface PaymentRow {
@@ -15,12 +17,19 @@ interface PaymentRow {
   student_instrument: Instrument;
   student_centre: Centre;
   student_payment_type?: PaymentBehavior;
+  student_type?: StudentType;
+  student_exam_year?: ExamYear | null;
   amount: number;
   payment_date: string;
   payment_type: PaymentLabel;
   period_label?: string;
   status: PaymentStatus;
   notes?: string;
+  total_fee: number;
+  amount_paid: number;
+  remaining_balance: number;
+  installment_number: number;
+  payment_mode?: string;
 }
 
 export default function FeesPage() {
@@ -37,6 +46,7 @@ export default function FeesPage() {
   // Modals state
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [editPayment, setEditPayment] = useState<PaymentRow | null>(null);
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [addStudentId, setAddStudentId] = useState('');
@@ -91,6 +101,17 @@ export default function FeesPage() {
     fetchData();
   };
 
+  const handleEditSave = async (updates: Partial<PaymentRow>) => {
+    if (!editPayment) return;
+    await fetch(`/api/fees/${editPayment.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    });
+    setEditPayment(null);
+    fetchData();
+  };
+
   const confirmDelete = async () => {
     if (!deleteId) return;
     setIsDeleting(true);
@@ -113,17 +134,24 @@ export default function FeesPage() {
     e.preventDefault();
     setSubmitting(true);
     try {
+      const selectedStudent = students.find(s => s.id === addStudentId);
+      const amt = Number(addAmount);
+
       const res = await fetch('/api/fees', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           student_id: addStudentId,
-          amount: Number(addAmount),
+          amount: amt,
           payment_date: new Date(addDate).toISOString(),
           payment_type: addType,
           period_label: addLabel || undefined,
           status: addStatus,
-          notes: addNotes || undefined
+          notes: addNotes || undefined,
+          total_fee: amt,
+          amount_paid: addStatus === 'Paid' ? amt : 0,
+          remaining_balance: addStatus === 'Paid' ? 0 : amt,
+          installment_number: 1,
         }),
       });
       if (res.ok) {
@@ -170,7 +198,7 @@ export default function FeesPage() {
             <StatCard title="Collected" value={fmt(totals.paid)} color="emerald" subtitle={`${payments.filter(p => p.status === 'Paid').length} paid`}
               icon={<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>}
             />
-            <StatCard title="Pending" value={fmt(totals.pending)} color="rose" subtitle={`${payments.filter(p => p.status === 'Pending').length} pending`}
+            <StatCard title="Pending" value={fmt(totals.pending)} color="rose" subtitle={`${payments.filter(p => p.status !== 'Paid').length} pending`}
               icon={<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" /></svg>}
             />
           </>
@@ -188,7 +216,7 @@ export default function FeesPage() {
           {CENTRES.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
         <select value={instrumentFilter} onChange={e => setInstrumentFilter(e.target.value)} className="table-select">
-          <option value="all">All Instruments</option>
+          <option value="all">All Subjects</option>
           {INSTRUMENTS.map(i => <option key={i} value={i}>{i}</option>)}
         </select>
         <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="table-select">
@@ -208,24 +236,28 @@ export default function FeesPage() {
               <tr>
                 <th>Student</th>
                 <th>Type</th>
-                <th>Label</th>
+                <th>Total Fee</th>
+                <th>Paid</th>
+                <th>Remaining</th>
+                <th>Installment</th>
                 <th>Date</th>
-                <th>Amount</th>
                 <th>Status</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <TableSkeleton rows={10} columns={7} />
+                <TableSkeleton rows={10} columns={9} />
               ) : payments.length === 0 ? (
-                <tr><td colSpan={7} className="table-empty">No payment records found. Click &quot;Add Payment&quot; to record one.</td></tr>
+                <tr><td colSpan={9} className="table-empty">No payment records found. Click &quot;Add Payment&quot; to record one.</td></tr>
               ) : (
                 payments.map(p => (
                   <tr key={p.id}>
                     <td>
                       <div className="table-cell-name">{p.student_name}</div>
-                      <div className="table-cell-mono" style={{ fontSize: '12px', color: '#64748b' }}>{p.student_payment_type}</div>
+                      <div style={{ fontSize: '12px', color: '#64748b' }}>
+                        {p.student_type === 'EXAM' ? '📝 Exam' : '📅 Monthly'}
+                      </div>
                     </td>
                     <td>
                       <select
@@ -236,28 +268,40 @@ export default function FeesPage() {
                         {PAYMENT_LABELS.map(t => <option key={t} value={t}>{t}</option>)}
                       </select>
                     </td>
-                    <td style={{ color: '#64748b', fontSize: '13px' }}>{p.period_label || '—'}</td>
+                    <td className="table-cell-mono">₹{Number(p.total_fee).toLocaleString('en-IN')}</td>
+                    <td className="table-cell-mono" style={{ color: '#10b981' }}>₹{Number(p.amount_paid).toLocaleString('en-IN')}</td>
+                    <td className="table-cell-mono" style={{ color: Number(p.remaining_balance) > 0 ? '#ef4444' : '#10b981' }}>
+                      ₹{Number(p.remaining_balance).toLocaleString('en-IN')}
+                    </td>
+                    <td style={{ textAlign: 'center' }}>{p.installment_number || 1}</td>
                     <td>{new Date(p.payment_date).toLocaleDateString('en-IN')}</td>
-                    <td className="table-cell-mono">₹{p.amount.toLocaleString('en-IN')}</td>
                     <td>
-                      <select
-                        value={p.status}
-                        onChange={e => handleUpdate(p.id, { status: e.target.value as PaymentStatus })}
-                        className={`inline-status-select status-${p.status.toLowerCase()}`}
-                      >
-                        {PAYMENT_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-                      </select>
+                      <FeeStatusBadge status={p.status} />
                     </td>
                     <td>
-                      <button
-                        className="p-1 rounded hover:bg-rose-100 text-rose-500 transition-colors"
-                        onClick={() => setDeleteId(p.id)}
-                        title="Delete Fee Record"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
-                        </svg>
-                      </button>
+                      <div className="action-buttons">
+                        {/* Edit Payment Button */}
+                        <button
+                          className="btn-edit-payment"
+                          onClick={() => setEditPayment(p)}
+                          title="Edit Payment"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" />
+                          </svg>
+                        </button>
+                        {/* Delete Button */}
+                        <button
+                          className="btn-edit-payment"
+                          style={{ color: '#f43f5e' }}
+                          onClick={() => setDeleteId(p.id)}
+                          title="Delete Fee Record"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+                          </svg>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -266,6 +310,15 @@ export default function FeesPage() {
           </table>
         </div>
       </div>
+
+      {/* Edit Payment Modal */}
+      {editPayment && (
+        <EditPaymentModal
+          payment={editPayment as ExtendedFeePayment}
+          onSave={handleEditSave}
+          onCancel={() => setEditPayment(null)}
+        />
+      )}
 
       {/* Delete Confirmation Modal */}
       {deleteId && (
@@ -301,7 +354,7 @@ export default function FeesPage() {
                 <select value={addStudentId} onChange={e => setAddStudentId(e.target.value)} required className="form-select">
                   <option value="" disabled>-- Choose a Student --</option>
                   {students.filter(s => s.status === 'active').map(s => (
-                     <option key={s.id} value={s.id}>{s.name} ({s.payment_type})</option>
+                     <option key={s.id} value={s.id}>{s.name} ({s.student_type || 'MONTHLY'})</option>
                   ))}
                 </select>
               </div>

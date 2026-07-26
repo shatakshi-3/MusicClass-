@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import type { Student, Instrument, Centre, PaymentBehavior } from '@/lib/types';
-import { INSTRUMENTS, CENTRES, PAYMENT_BEHAVIORS } from '@/lib/types';
+import type { Student, Instrument, Centre, StudentType, ExamYear } from '@/lib/types';
+import { INSTRUMENTS, CENTRES, EXAM_YEARS, MONTHLY_FEE, EXAM_FEE_MAP } from '@/lib/types';
 
 interface StudentFormProps {
   student?: Student;
@@ -22,10 +22,11 @@ export default function StudentForm({ student, onSave, onCancel, mode }: Student
   const [phone, setPhone] = useState(student?.phone || '');
   const [age, setAge] = useState(student?.age?.toString() || '');
   const [parents_name, setParentsName] = useState(student?.parents_name || '');
-  const [instrument, setInstrument] = useState<Instrument>(student?.instrument || 'Guitar');
+  const [instrument, setInstrument] = useState<Instrument>(student?.instrument || 'Vocal');
   const [centre, setCentre] = useState<Centre>(student?.centre || 'Prayag Sangeet Samiti');
   const [class_timing, setClassTiming] = useState(student?.class_timing || CLASS_TIMINGS[0]);
-  const [payment_type, setPaymentType] = useState<PaymentBehavior>(student?.payment_type || 'REGULAR');
+  const [student_type, setStudentType] = useState<StudentType>(student?.student_type || 'MONTHLY');
+  const [exam_year, setExamYear] = useState<ExamYear>((student?.exam_year as ExamYear) || 1);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -43,7 +44,8 @@ export default function StudentForm({ student, onSave, onCancel, mode }: Student
         instrument,
         centre,
         class_timing,
-        payment_type,
+        student_type,
+        exam_year: student_type === 'EXAM' ? exam_year : undefined,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save');
@@ -63,6 +65,57 @@ export default function StudentForm({ student, onSave, onCancel, mode }: Student
         {error && <div className="form-error">{error}</div>}
 
         <form onSubmit={handleSubmit} className="student-form">
+          {/* Student Type Selector */}
+          <div className="form-group">
+            <label className="form-label">Student Type *</label>
+            <div className="student-type-selector">
+              <button
+                type="button"
+                className={`student-type-option ${student_type === 'MONTHLY' ? 'student-type-active' : ''}`}
+                onClick={() => setStudentType('MONTHLY')}
+              >
+                📅 Monthly Student
+              </button>
+              <button
+                type="button"
+                className={`student-type-option ${student_type === 'EXAM' ? 'student-type-active' : ''}`}
+                onClick={() => setStudentType('EXAM')}
+              >
+                📝 Exam Student
+              </button>
+            </div>
+          </div>
+
+          {/* Fee Info */}
+          {student_type === 'MONTHLY' ? (
+            <div className="fee-info-card fee-info-monthly">
+              <span className="fee-info-label">Monthly Fee</span>
+              <span className="fee-info-amount">₹{MONTHLY_FEE.toLocaleString('en-IN')}</span>
+            </div>
+          ) : (
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">Exam Year *</label>
+                <select
+                  value={exam_year}
+                  onChange={e => setExamYear(Number(e.target.value) as ExamYear)}
+                  className="form-select"
+                >
+                  {EXAM_YEARS.map(y => (<option key={y} value={y}>Year {y}</option>))}
+                </select>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Yearly Fee (auto)</label>
+                <div className="fee-info-card fee-info-exam" style={{ padding: '9px 14px' }}>
+                  <span className="fee-info-label">Total</span>
+                  <span className="fee-info-amount" style={{ fontSize: '16px' }}>
+                    ₹{EXAM_FEE_MAP[exam_year].toLocaleString('en-IN')}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="form-row">
             <div className="form-group">
               <label className="form-label">Full Name *</label>
@@ -120,7 +173,7 @@ export default function StudentForm({ student, onSave, onCancel, mode }: Student
 
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Instrument *</label>
+              <label className="form-label">Subject *</label>
               <select
                 value={instrument}
                 onChange={e => setInstrument(e.target.value as Instrument)}
@@ -145,32 +198,17 @@ export default function StudentForm({ student, onSave, onCancel, mode }: Student
             </div>
           </div>
 
-          <div className="form-row">
-            <div className="form-group">
-              <label className="form-label">Class Timing *</label>
-              <select
-                value={class_timing}
-                onChange={e => setClassTiming(e.target.value)}
-                className="form-select"
-              >
-                {CLASS_TIMINGS.map(t => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Payment Type *</label>
-              <select
-                value={payment_type}
-                onChange={e => setPaymentType(e.target.value as PaymentBehavior)}
-                className="form-select"
-              >
-                {PAYMENT_BEHAVIORS.map(p => (
-                  <option key={p} value={p}>{p}</option>
-                ))}
-              </select>
-            </div>
+          <div className="form-group">
+            <label className="form-label">Class Timing *</label>
+            <select
+              value={class_timing}
+              onChange={e => setClassTiming(e.target.value)}
+              className="form-select"
+            >
+              {CLASS_TIMINGS.map(t => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
           </div>
 
           <div className="form-actions">

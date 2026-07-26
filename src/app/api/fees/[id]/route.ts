@@ -1,4 +1,4 @@
-// PUT /api/fees/[id] — update payment fields
+// PUT /api/fees/[id] — update payment fields (supports installment updates)
 // DELETE /api/fees/[id] — delete payment record
 import { NextRequest, NextResponse } from 'next/server';
 import { updatePaymentStatus, deleteFeePayment } from '@/lib/db';
@@ -11,7 +11,11 @@ export async function PUT(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { status, notes, payment_type, period_label } = body;
+    const {
+      status, notes, payment_type, period_label,
+      amount_paid, remaining_balance, installment_number,
+      payment_mode, payment_date, amount, total_fee,
+    } = body;
 
     const updates: Record<string, any> = {};
 
@@ -31,6 +35,27 @@ export async function PUT(
 
     if (notes !== undefined) updates.notes = notes;
     if (period_label !== undefined) updates.period_label = period_label;
+    if (payment_date !== undefined) updates.payment_date = payment_date;
+    if (payment_mode !== undefined) updates.payment_mode = payment_mode;
+
+    // Installment tracking fields
+    if (amount_paid !== undefined) updates.amount_paid = Number(amount_paid);
+    if (remaining_balance !== undefined) updates.remaining_balance = Number(remaining_balance);
+    if (installment_number !== undefined) updates.installment_number = Number(installment_number);
+    if (amount !== undefined) updates.amount = Number(amount);
+    if (total_fee !== undefined) updates.total_fee = Number(total_fee);
+
+    // Auto-calculate status based on amounts if both are provided
+    if (updates.amount_paid !== undefined && updates.remaining_balance !== undefined) {
+      if (updates.remaining_balance <= 0) {
+        updates.status = 'Paid';
+        updates.remaining_balance = 0;
+      } else if (updates.amount_paid > 0) {
+        updates.status = 'Partially Paid';
+      } else {
+        updates.status = 'Pending';
+      }
+    }
 
     if (Object.keys(updates).length === 0) {
       return NextResponse.json({ error: 'No valid fields provided to update' }, { status: 400 });

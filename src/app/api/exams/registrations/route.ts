@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
     });
 
     const totalFees = registrations.reduce((sum, r) => sum + Number(r.exam_fee), 0);
-    const paidFees = registrations.filter(r => r.payment_status === 'Paid').reduce((sum, r) => sum + Number(r.exam_fee), 0);
+    const paidFees = registrations.reduce((sum, r) => sum + Number(r.amount_paid || 0), 0);
 
     return NextResponse.json({ registrations, totalFees, paidFees });
   } catch (error) {

@@ -4,7 +4,7 @@ import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import FeeStatusBadge from './FeeStatusBadge';
 import { TableSkeleton } from './LoadingSkeleton';
-import type { Student, Instrument } from '@/lib/types';
+import type { Student, Instrument, StudentType } from '@/lib/types';
 import { INSTRUMENTS } from '@/lib/types';
 
 interface StudentTableProps {
@@ -12,7 +12,7 @@ interface StudentTableProps {
   loading: boolean;
 }
 
-type SortKey = 'name' | 'phone' | 'age' | 'instrument' | 'centre' | 'status';
+type SortKey = 'name' | 'phone' | 'age' | 'instrument' | 'centre' | 'status' | 'student_type';
 type SortDir = 'asc' | 'desc';
 
 const PAGE_SIZE = 15;
@@ -26,6 +26,7 @@ export default function StudentTable({ students, loading }: StudentTableProps) {
   const [centreFilter, setCentreFilter] = useState<string>('all');
   const [instrumentFilter, setInstrumentFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [typeFilter, setTypeFilter] = useState<string>('all');
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [page, setPage] = useState(1);
@@ -56,10 +57,11 @@ export default function StudentTable({ students, loading }: StudentTableProps) {
     if (centreFilter !== 'all') result = result.filter(s => s.centre === centreFilter);
     if (instrumentFilter !== 'all') result = result.filter(s => s.instrument === instrumentFilter);
     if (statusFilter !== 'all') result = result.filter(s => s.status === statusFilter);
+    if (typeFilter !== 'all') result = result.filter(s => s.student_type === typeFilter);
 
     result.sort((a, b) => {
-      const aVal = a[sortKey] as string | number;
-      const bVal = b[sortKey] as string | number;
+      const aVal = (a[sortKey] ?? '') as string | number;
+      const bVal = (b[sortKey] ?? '') as string | number;
       if (typeof aVal === 'string' && typeof bVal === 'string') {
         return sortDir === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
       }
@@ -70,7 +72,7 @@ export default function StudentTable({ students, loading }: StudentTableProps) {
     });
 
     return result;
-  }, [students, debouncedSearch, centreFilter, instrumentFilter, statusFilter, sortKey, sortDir]);
+  }, [students, debouncedSearch, centreFilter, instrumentFilter, statusFilter, typeFilter, sortKey, sortDir]);
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const paginated = useMemo(() => {
@@ -138,13 +140,18 @@ export default function StudentTable({ students, loading }: StudentTableProps) {
           />
         </div>
         <div className="table-filter-group">
+          <select value={typeFilter} onChange={e => { setTypeFilter(e.target.value); setPage(1); }} className="table-select">
+            <option value="all">All Types</option>
+            <option value="MONTHLY">Monthly Student</option>
+            <option value="EXAM">Exam Student</option>
+          </select>
           <select value={centreFilter} onChange={e => { setCentreFilter(e.target.value); setPage(1); }} className="table-select">
             <option value="all">All Centres</option>
             <option value="Prayag Sangeet Samiti">Prayag Sangeet Samiti</option>
             <option value="Khairagarh University">Khairagarh University</option>
           </select>
           <select value={instrumentFilter} onChange={e => { setInstrumentFilter(e.target.value); setPage(1); }} className="table-select">
-            <option value="all">All Instruments</option>
+            <option value="all">All Subjects</option>
             {INSTRUMENTS.map(i => <option key={i} value={i}>{i}</option>)}
           </select>
           <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }} className="table-select">
@@ -164,10 +171,11 @@ export default function StudentTable({ students, loading }: StudentTableProps) {
           <thead>
             <tr>
               <th onClick={() => handleSort('name')} className="sortable-th">Name <SortIcon column="name" /></th>
+              <th onClick={() => handleSort('student_type')} className="sortable-th">Type <SortIcon column="student_type" /></th>
               <th onClick={() => handleSort('phone')} className="sortable-th">Phone <SortIcon column="phone" /></th>
               <th onClick={() => handleSort('age')} className="sortable-th">Age <SortIcon column="age" /></th>
               <th>Parent</th>
-              <th onClick={() => handleSort('instrument')} className="sortable-th">Instrument <SortIcon column="instrument" /></th>
+              <th onClick={() => handleSort('instrument')} className="sortable-th">Subject <SortIcon column="instrument" /></th>
               <th>Timing</th>
               <th onClick={() => handleSort('centre')} className="sortable-th">Centre <SortIcon column="centre" /></th>
               <th onClick={() => handleSort('status')} className="sortable-th">Status <SortIcon column="status" /></th>
@@ -176,15 +184,29 @@ export default function StudentTable({ students, loading }: StudentTableProps) {
           </thead>
           <tbody>
             {loading ? (
-              <TableSkeleton rows={10} columns={9} />
+              <TableSkeleton rows={10} columns={10} />
             ) : paginated.length === 0 ? (
               <tr>
-                <td colSpan={9} className="table-empty">No students found</td>
+                <td colSpan={10} className="table-empty">No students found</td>
               </tr>
             ) : (
               paginated.map(student => (
                 <tr key={student.id} onClick={() => router.push(`/admin/students/${student.id}`)} className="table-row-clickable">
                   <td className="table-cell-name">{student.name}</td>
+                  <td>
+                    <span style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      padding: '2px 8px',
+                      borderRadius: '12px',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      background: student.student_type === 'EXAM' ? '#eff6ff' : '#f5f3ff',
+                      color: student.student_type === 'EXAM' ? '#2563eb' : '#7c3aed',
+                    }}>
+                      {student.student_type === 'EXAM' ? `Exam (Yr ${student.exam_year || 1})` : 'Monthly'}
+                    </span>
+                  </td>
                   <td className="table-cell-mono">{student.phone}</td>
                   <td>{student.age}</td>
                   <td>{student.parents_name}</td>

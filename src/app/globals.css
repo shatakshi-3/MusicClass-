@@ -1864,3 +1864,238 @@ body {
   font-weight: 400;
 }
 
+/* ========================
+   STATUS BADGES (generic)
+   ======================== */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.badge-paid {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+.badge-pending {
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+}
+
+.badge-partial {
+  background: #fff7ed;
+  color: #ea580c;
+}
+
+.badge-late {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+}
+
+.badge-waived {
+  background: #f0fdf4;
+  color: #059669;
+}
+
+/* ========================
+   PARTIALLY PAID STATUS (inline select)
+   ======================== */
+.status-partially\ paid,
+.status-partially-paid {
+  background-color: #fff7ed;
+  color: #ea580c;
+  border-color: rgba(234, 88, 12, 0.3);
+}
+
+/* ========================
+   STUDENT TYPE SELECTOR
+   ======================== */
+.student-type-selector {
+  display: flex;
+  gap: 0;
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.student-type-option {
+  flex: 1;
+  padding: 10px 16px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  border: none;
+  font-family: var(--font-sans);
+}
+
+.student-type-option:first-child {
+  border-right: 1px solid var(--color-border);
+}
+
+.student-type-option:hover:not(.student-type-active) {
+  background: var(--color-surface-hover);
+}
+
+.student-type-active {
+  background: linear-gradient(135deg, var(--color-primary), #4f46e5);
+  color: white;
+}
+
+/* ========================
+   FEE INFO DISPLAY
+   ======================== */
+.fee-info-card {
+  padding: 14px 18px;
+  border-radius: var(--radius-md);
+  border: 1.5px solid;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.fee-info-monthly {
+  background: var(--stat-emerald-bg);
+  border-color: rgba(16, 185, 129, 0.2);
+}
+
+.fee-info-exam {
+  background: var(--stat-blue-bg);
+  border-color: rgba(59, 130, 246, 0.2);
+}
+
+.fee-info-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.fee-info-amount {
+  font-size: 18px;
+  font-weight: 700;
+  font-family: 'SF Mono', 'Cascadia Code', monospace;
+}
+
+.fee-info-monthly .fee-info-amount {
+  color: var(--stat-emerald);
+}
+
+.fee-info-exam .fee-info-amount {
+  color: var(--stat-blue);
+}
+
+/* ========================
+   EDIT PAYMENT BUTTON
+   ======================== */
+.btn-edit-payment {
+  padding: 4px 8px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--color-primary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-edit-payment:hover {
+  background: var(--color-primary-light);
+}
+
+/* ========================
+   INSTALLMENT PROGRESS
+   ======================== */
+.installment-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.installment-bar {
+  height: 8px;
+  background: var(--color-border-light);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.installment-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.5s ease;
+  background: linear-gradient(90deg, var(--stat-emerald), #059669);
+}
+
+.installment-bar-fill-partial {
+  background: linear-gradient(90deg, var(--stat-amber), #d97706);
+}
+
+.installment-text {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+/* ========================
+   PAYMENT SUMMARY (edit modal)
+   ======================== */
+.payment-summary {
+  padding: 16px 18px;
+  background: #f8fafc;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-light);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.payment-summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 14px;
+}
+
+.payment-summary-label {
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+.payment-summary-value {
+  font-weight: 700;
+  color: var(--color-text);
+  font-family: 'SF Mono', 'Cascadia Code', monospace;
+}
+
+/* ========================
+   STAT GRID 2 VARIANT
+   ======================== */
+.stat-grid-2 {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+@media (max-width: 768px) {
+  .stat-grid-2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ========================
+   ACTION BUTTONS GROUP
+   ======================== */
+.action-buttons {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+

@@ -5,9 +5,12 @@ interface FeeStatusBadgeProps {
 const statusMap: Record<string, { className: string; label: string }> = {
   Paid: { className: 'badge-paid', label: 'Paid' },
   Pending: { className: 'badge-pending', label: 'Pending' },
+  'Partially Paid': { className: 'badge-partial', label: 'Partially Paid' },
   Due: { className: 'badge-pending', label: 'Due' },
   Late: { className: 'badge-late', label: 'Late' },
   Waived: { className: 'badge-waived', label: 'Waived' },
+  Active: { className: 'badge-paid', label: 'Active' },
+  Inactive: { className: 'badge-pending', label: 'Inactive' },
 };
 
 export default function FeeStatusBadge({ status }: FeeStatusBadgeProps) {

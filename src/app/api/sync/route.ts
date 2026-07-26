@@ -49,6 +49,7 @@ export async function POST() {
           centre: entry.centre,
           class_timing: entry.class_timing,
           payment_type: 'REGULAR',
+          student_type: 'MONTHLY',
           status: 'active',
         });
 

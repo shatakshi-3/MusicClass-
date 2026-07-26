@@ -21,9 +21,9 @@ export async function GET(request: NextRequest) {
       status: status || undefined,
     });
 
-    const totalAmount = payments.reduce((sum, p) => sum + Number(p.amount), 0);
-    const paidAmount = payments.filter(p => p.status === 'Paid').reduce((sum, p) => sum + Number(p.amount), 0);
-    const pendingAmount = payments.filter(p => p.status !== 'Paid').reduce((sum, p) => sum + Number(p.amount), 0);
+    const totalAmount = payments.reduce((sum, p) => sum + Number(p.total_fee || p.amount), 0);
+    const paidAmount = payments.reduce((sum, p) => sum + Number(p.amount_paid || 0), 0);
+    const pendingAmount = payments.reduce((sum, p) => sum + Number(p.remaining_balance || 0), 0);
 
     return NextResponse.json({ payments, totalAmount, paidAmount, pendingAmount });
   } catch (error) {
@@ -35,7 +35,11 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { student_id, amount, payment_date, payment_type, period_label, status, notes } = body;
+    const {
+      student_id, amount, payment_date, payment_type, period_label,
+      status, notes, total_fee, amount_paid, remaining_balance,
+      installment_number, payment_mode,
+    } = body;
 
     if (!student_id || amount === undefined || amount < 0 || !payment_date || !payment_type || !status) {
       return NextResponse.json({ error: 'Missing required fields or invalid amount' }, { status: 400 });
@@ -53,7 +57,12 @@ export async function POST(request: NextRequest) {
       payment_type,
       period_label: period_label || undefined,
       status,
-      notes
+      notes,
+      total_fee: total_fee ?? Number(amount),
+      amount_paid: amount_paid ?? Number(amount),
+      remaining_balance: remaining_balance ?? 0,
+      installment_number: installment_number ?? 1,
+      payment_mode: payment_mode || undefined,
     });
 
     return NextResponse.json({ success: true, payment }, { status: 201 });
