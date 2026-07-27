@@ -8,7 +8,7 @@ import type {
   Instrument, Centre, PaymentStatus, PaymentLabel, PaymentBehavior,
   ExamPaymentStatus, ExamYear, StudentStatus, StudentType,
 } from './types';
-import { INSTRUMENTS, CENTRES } from './types';
+import { INSTRUMENTS, CENTRES, EXAM_FEE_MAP } from './types';
 
 // ========================
 // STUDENTS
@@ -357,8 +357,11 @@ export async function getFeeForExamYear(examYear: ExamYear): Promise<number> {
     .eq('exam_year', examYear)
     .maybeSingle();
 
-  if (error) throw new Error(`Failed to fetch fee for exam year: ${error.message}`);
-  return data?.exam_fee ?? 0;
+  if (error) {
+    console.warn(`[db] Fee for exam year ${examYear} error: ${error.message}. Using default fee map.`);
+    return EXAM_FEE_MAP[examYear] || 7500;
+  }
+  return data?.exam_fee ?? EXAM_FEE_MAP[examYear] ?? 7500;
 }
 
 // ========================
@@ -400,8 +403,8 @@ export async function getExamRegistrations(filters?: {
     exam_fee: row.exam_fee,
     payment_status: row.payment_status,
     amount_paid: row.amount_paid ?? 0,
-    remaining_balance: row.remaining_balance ?? 0,
-    installment_number: row.installment_number ?? 0,
+    remaining_balance: row.remaining_balance ?? (row.payment_status === 'Paid' ? 0 : row.exam_fee),
+    installment_number: row.installment_number ?? (row.amount_paid > 0 ? 1 : 0),
     created_at: row.created_at,
     student_name: row.students?.name ?? 'Unknown',
     student_phone: row.students?.phone ?? '',
@@ -416,22 +419,50 @@ export async function createExamRegistration(data: {
 }): Promise<ExamRegistration> {
   const examFee = await getFeeForExamYear(data.exam_year);
 
-  const { data: reg, error } = await supabase
+  // Payload with new V2 installment columns
+  const fullPayload: any = {
+    student_id: data.student_id,
+    exam_year: data.exam_year,
+    centre: data.centre,
+    exam_fee: examFee,
+    payment_status: 'Pending',
+    amount_paid: 0,
+    remaining_balance: examFee,
+    installment_number: 0,
+  };
+
+  let { data: reg, error } = await supabase
     .from('exam_registrations')
-    .insert({
+    .insert(fullPayload)
+    .select()
+    .single();
+
+  // If column error occurs (e.g. amount_paid column not yet created in Supabase DB)
+  if (error && (error.message.includes('column') || error.code === '42703')) {
+    console.warn('[db] Installment columns missing in exam_registrations table. Falling back to core columns.');
+    const corePayload = {
       student_id: data.student_id,
       exam_year: data.exam_year,
       centre: data.centre,
       exam_fee: examFee,
       payment_status: 'Pending',
-      amount_paid: 0,
-      remaining_balance: examFee,
-      installment_number: 0,
-    })
-    .select()
-    .single();
+    };
 
-  if (error) throw new Error(`Failed to create exam registration: ${error.message}`);
+    const fallbackRes = await supabase
+      .from('exam_registrations')
+      .insert(corePayload)
+      .select()
+      .single();
+
+    reg = fallbackRes.data;
+    error = fallbackRes.error;
+  }
+
+  if (error) {
+    console.error('[db] Failed to create exam registration:', error);
+    throw new Error(`Failed to create exam registration: ${error.message}`);
+  }
+
   return reg as ExamRegistration;
 }
 

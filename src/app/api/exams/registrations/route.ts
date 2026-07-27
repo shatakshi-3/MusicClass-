@@ -55,6 +55,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ registration }, { status: 201 });
   } catch (error) {
     console.error('[API] Error creating exam registration:', error);
-    return NextResponse.json({ error: 'Failed to create registration' }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'Failed to create registration';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
