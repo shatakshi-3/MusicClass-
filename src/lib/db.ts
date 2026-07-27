@@ -215,56 +215,81 @@ export async function getFeePayments(filters?: {
   const { data, error } = await query;
   if (error) throw new Error(`Failed to fetch fee payments: ${error.message}`);
 
-  // Transform the joined data to match the expected flat format
-  return (data ?? []).map((row: any) => ({
-    id: row.id,
-    student_id: row.student_id,
-    amount: row.amount,
-    payment_date: row.payment_date,
-    payment_type: row.payment_type,
-    period_label: row.period_label,
-    status: row.status,
-    notes: row.notes,
-    total_fee: row.total_fee ?? 0,
-    amount_paid: row.amount_paid ?? 0,
-    remaining_balance: row.remaining_balance ?? 0,
-    installment_number: row.installment_number ?? 1,
-    payment_mode: row.payment_mode,
-    updated_at: row.updated_at,
-    created_at: row.created_at,
-    student_name: row.students?.name ?? 'Unknown',
-    student_phone: row.students?.phone ?? '',
-    student_instrument: (row.students?.instrument ?? 'Guitar') as Instrument,
-    student_centre: (row.students?.centre ?? 'Prayag Sangeet Samiti') as Centre,
-    student_payment_type: row.students?.payment_type as PaymentBehavior | undefined,
-    student_type: row.students?.student_type as StudentType | undefined,
-    student_exam_year: row.students?.exam_year as ExamYear | null | undefined,
-  }));
+  // Transform the joined data to match the expected flat format with smart fallbacks
+  return (data ?? []).map((row: any) => {
+    const studentType = row.students?.student_type as StudentType | undefined;
+    const examYear = row.students?.exam_year as ExamYear | null | undefined;
+    const defaultTotal = studentType === 'EXAM' && examYear ? EXAM_FEE_MAP[examYear] : 700;
+    const totalFee = Number(row.total_fee || defaultTotal);
+    const amountPaid = Number(row.amount_paid ?? (row.status === 'Paid' ? totalFee : row.amount ?? 0));
+    const remainingBalance = Number(row.remaining_balance ?? Math.max(0, totalFee - amountPaid));
+    const installmentNumber = Number(row.installment_number ?? (amountPaid > 0 ? 1 : 0));
+
+    return {
+      id: row.id,
+      student_id: row.student_id,
+      amount: amountPaid,
+      payment_date: row.payment_date,
+      payment_type: row.payment_type,
+      period_label: row.period_label,
+      status: row.status,
+      notes: row.notes,
+      total_fee: totalFee,
+      amount_paid: amountPaid,
+      remaining_balance: remainingBalance,
+      installment_number: installmentNumber,
+      payment_mode: row.payment_mode,
+      updated_at: row.updated_at,
+      created_at: row.created_at,
+      student_name: row.students?.name ?? 'Unknown',
+      student_phone: row.students?.phone ?? '',
+      student_instrument: (row.students?.instrument ?? 'Guitar') as Instrument,
+      student_centre: (row.students?.centre ?? 'Prayag Sangeet Samiti') as Centre,
+      student_payment_type: row.students?.payment_type as PaymentBehavior | undefined,
+      student_type: studentType,
+      student_exam_year: examYear,
+    };
+  });
 }
 
 export async function createFeePayment(
   data: Omit<FeePayment, 'id' | 'created_at' | 'updated_at'>
 ): Promise<FeePayment> {
   const now = new Date().toISOString();
-  const { data: payment, error } = await supabase
+  const payload: any = {
+    student_id: data.student_id,
+    amount: data.amount_paid || data.amount,
+    payment_date: data.payment_date,
+    payment_type: data.payment_type,
+    period_label: data.period_label || null,
+    status: data.status,
+    notes: data.notes || null,
+    total_fee: data.total_fee ?? 0,
+    amount_paid: data.amount_paid ?? data.amount ?? 0,
+    remaining_balance: data.remaining_balance ?? 0,
+    installment_number: data.installment_number ?? 1,
+    payment_mode: data.payment_mode || null,
+    updated_at: now,
+  };
+
+  let { data: payment, error } = await supabase
     .from('fee_payments')
-    .insert({
-      student_id: data.student_id,
-      amount: data.amount,
-      payment_date: data.payment_date,
-      payment_type: data.payment_type,
-      period_label: data.period_label || null,
-      status: data.status,
-      notes: data.notes || null,
-      total_fee: data.total_fee ?? 0,
-      amount_paid: data.amount_paid ?? 0,
-      remaining_balance: data.remaining_balance ?? 0,
-      installment_number: data.installment_number ?? 1,
-      payment_mode: data.payment_mode || null,
-      updated_at: now,
-    })
+    .insert(payload)
     .select()
     .single();
+
+  // Fallback for missing V2 schema columns
+  if (error && (error.message.includes('column') || error.code === '42703' || error.message.includes('schema cache'))) {
+    delete payload.total_fee;
+    delete payload.amount_paid;
+    delete payload.remaining_balance;
+    delete payload.installment_number;
+    delete payload.payment_mode;
+
+    const res = await supabase.from('fee_payments').insert(payload).select().single();
+    payment = res.data;
+    error = res.error;
+  }
 
   if (error) throw new Error(`Failed to create fee payment: ${error.message}`);
   return payment as FeePayment;
@@ -274,9 +299,14 @@ export async function updateFeePayment(
   id: string,
   updates: Partial<FeePayment>
 ): Promise<boolean> {
+  const payload: any = { ...updates, updated_at: new Date().toISOString() };
+  if (updates.amount_paid !== undefined) {
+    payload.amount = Number(updates.amount_paid);
+  }
+
   let { error } = await supabase
     .from('fee_payments')
-    .update({ ...updates, updated_at: new Date().toISOString() })
+    .update(payload)
     .eq('id', id);
 
   // Fallback for missing V2 schema columns
@@ -285,7 +315,8 @@ export async function updateFeePayment(
     const safeUpdates: any = { updated_at: new Date().toISOString() };
     if (updates.status) safeUpdates.status = updates.status;
     if (updates.notes !== undefined) safeUpdates.notes = updates.notes;
-    if (updates.amount !== undefined) safeUpdates.amount = updates.amount;
+    if (updates.amount_paid !== undefined) safeUpdates.amount = Number(updates.amount_paid);
+    else if (updates.amount !== undefined) safeUpdates.amount = Number(updates.amount);
     if (updates.payment_type) safeUpdates.payment_type = updates.payment_type;
     if (updates.period_label) safeUpdates.period_label = updates.period_label;
     if (updates.payment_date) safeUpdates.payment_date = updates.payment_date;
@@ -560,23 +591,17 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   const monthlyStudents = students.filter(s => s.student_type === 'MONTHLY').length;
   const examStudents = students.filter(s => s.student_type === 'EXAM').length;
 
-  // Fetch all fee payments
-  const { data: allPayments, error: paymentsErr } = await supabase
-    .from('fee_payments')
-    .select('*');
+  // Fetch all fee payments with joined student info and smart fallbacks
+  const payments = await getFeePayments();
 
-  if (paymentsErr) throw new Error(`Failed to fetch payments: ${paymentsErr.message}`);
-  const payments = (allPayments ?? []) as FeePayment[];
-
-  // Total collected (all time, Paid only)
-  const paidPayments = payments.filter(p => p.status === 'Paid');
-  const totalCollected = paidPayments.reduce((sum, p) => sum + Number(p.amount_paid || p.amount), 0);
+  // Total collected (all time)
+  const totalCollected = payments.reduce((sum, p) => sum + Number(p.amount_paid || 0), 0);
 
   // Last 30 days collected
   const now = new Date();
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400000);
-  const last30 = paidPayments.filter(p => new Date(p.payment_date) >= thirtyDaysAgo);
-  const last30DaysCollected = last30.reduce((sum, p) => sum + Number(p.amount_paid || p.amount), 0);
+  const last30 = payments.filter(p => new Date(p.payment_date) >= thirtyDaysAgo);
+  const last30DaysCollected = last30.reduce((sum, p) => sum + Number(p.amount_paid || 0), 0);
 
   // Students with no payment in last 30 days
   const recentPayerIds = new Set(
@@ -588,18 +613,13 @@ export async function getDashboardStats(): Promise<DashboardStats> {
 
   // Average payment per student (all time, active only)
   const activeIds = new Set(students.map(s => s.id));
-  const activePayments = paidPayments.filter(p => activeIds.has(p.student_id));
+  const activePayments = payments.filter(p => activeIds.has(p.student_id));
   const avgPaymentPerStudent = students.length > 0
-    ? Math.round(activePayments.reduce((sum, p) => sum + Number(p.amount_paid || p.amount), 0) / students.length)
+    ? Math.round(activePayments.reduce((sum, p) => sum + Number(p.amount_paid || 0), 0) / students.length)
     : 0;
 
   // Exam stats
-  const { data: examRegs, error: examErr } = await supabase
-    .from('exam_registrations')
-    .select('*');
-
-  if (examErr) throw new Error(`Failed to fetch exam registrations: ${examErr.message}`);
-  const regs = (examRegs ?? []) as ExamRegistration[];
+  const regs = await getExamRegistrations();
 
   const examFeesCollected = regs.reduce((sum, r) => sum + Number(r.amount_paid || 0), 0);
   const examFeesPending = regs.reduce((sum, r) => sum + Number(r.remaining_balance || 0), 0);
@@ -607,9 +627,11 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   const uniqueExamStudents = new Set(regs.map(r => r.student_id));
 
   // Pending fees (from fee_payments + exam_registrations)
-  const pendingFromPayments = payments
-    .filter(p => p.status !== 'Paid')
-    .reduce((sum, p) => sum + Number(p.remaining_balance || 0), 0);
+  const pendingFromPayments = payments.reduce((sum, p) => {
+    if (p.status === 'Paid') return sum;
+    return sum + Number(p.remaining_balance || 0);
+  }, 0);
+
   const pendingFees = pendingFromPayments + examFeesPending;
 
   // Fully paid students (all payments are Paid)
