@@ -438,21 +438,42 @@ export async function getExamRegistrations(filters?: {
   const { data, error } = await query;
   if (error) throw new Error(`Failed to fetch exam registrations: ${error.message}`);
 
-  return (data ?? []).map((row: any) => ({
-    id: row.id,
-    student_id: row.student_id,
-    exam_year: row.exam_year,
-    centre: row.centre,
-    exam_fee: row.exam_fee,
-    payment_status: row.payment_status,
-    amount_paid: row.amount_paid ?? 0,
-    remaining_balance: row.remaining_balance ?? (row.payment_status === 'Paid' ? 0 : row.exam_fee),
-    installment_number: row.installment_number ?? (row.amount_paid > 0 ? 1 : 0),
-    created_at: row.created_at,
-    student_name: row.students?.name ?? 'Unknown',
-    student_phone: row.students?.phone ?? '',
-    student_instrument: (row.students?.instrument ?? 'Guitar') as Instrument,
-  }));
+  return (data ?? []).map((row: any) => {
+    const examYear = row.exam_year as ExamYear;
+    const defaultFee = EXAM_FEE_MAP[examYear] || 7500;
+    const totalFee = Number(row.exam_fee || defaultFee);
+
+    // Smart fallback for amount_paid & remaining_balance
+    let amountPaid = Number(row.amount_paid ?? 0);
+    if (row.amount_paid === undefined || row.amount_paid === null) {
+      if (row.payment_status === 'Paid') {
+        amountPaid = totalFee;
+      }
+    }
+
+    let remainingBalance = Number(row.remaining_balance ?? Math.max(0, totalFee - amountPaid));
+    if (row.payment_status === 'Paid') {
+      remainingBalance = 0;
+    }
+
+    const installmentNumber = Number(row.installment_number ?? (amountPaid > 0 ? 1 : 0));
+
+    return {
+      id: row.id,
+      student_id: row.student_id,
+      exam_year: examYear,
+      centre: row.centre,
+      exam_fee: totalFee,
+      payment_status: row.payment_status,
+      amount_paid: amountPaid,
+      remaining_balance: remainingBalance,
+      installment_number: installmentNumber,
+      created_at: row.created_at,
+      student_name: row.students?.name ?? 'Unknown',
+      student_phone: row.students?.phone ?? '',
+      student_instrument: (row.students?.instrument ?? 'Guitar') as Instrument,
+    };
+  });
 }
 
 export async function createExamRegistration(data: {
