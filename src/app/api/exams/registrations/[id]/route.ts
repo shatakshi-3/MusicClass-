@@ -50,7 +50,8 @@ export async function PUT(
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('[API] Error updating exam payment:', error);
-    return NextResponse.json({ error: 'Failed to update payment' }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'Failed to update payment';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 

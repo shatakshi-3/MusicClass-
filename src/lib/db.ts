@@ -274,10 +274,28 @@ export async function updateFeePayment(
   id: string,
   updates: Partial<FeePayment>
 ): Promise<boolean> {
-  const { error } = await supabase
+  let { error } = await supabase
     .from('fee_payments')
     .update({ ...updates, updated_at: new Date().toISOString() })
     .eq('id', id);
+
+  // Fallback for missing V2 schema columns
+  if (error && (error.message.includes('column') || error.code === '42703' || error.message.includes('schema cache'))) {
+    console.warn('[db] Installment columns missing in fee_payments table. Falling back to core columns.');
+    const safeUpdates: any = { updated_at: new Date().toISOString() };
+    if (updates.status) safeUpdates.status = updates.status;
+    if (updates.notes !== undefined) safeUpdates.notes = updates.notes;
+    if (updates.amount !== undefined) safeUpdates.amount = updates.amount;
+    if (updates.payment_type) safeUpdates.payment_type = updates.payment_type;
+    if (updates.period_label) safeUpdates.period_label = updates.period_label;
+    if (updates.payment_date) safeUpdates.payment_date = updates.payment_date;
+
+    const res = await supabase
+      .from('fee_payments')
+      .update(safeUpdates)
+      .eq('id', id);
+    error = res.error;
+  }
 
   if (error) throw new Error(`Failed to update payment: ${error.message}`);
   return true;
@@ -287,13 +305,7 @@ export async function updatePaymentStatus(
   id: string,
   updates: Partial<FeePayment>
 ): Promise<boolean> {
-  const { error, count } = await supabase
-    .from('fee_payments')
-    .update({ ...updates, updated_at: new Date().toISOString() })
-    .eq('id', id);
-
-  if (error) throw new Error(`Failed to update payment: ${error.message}`);
-  return true;
+  return updateFeePayment(id, updates);
 }
 
 export async function deleteFeePayment(id: string): Promise<boolean> {
@@ -470,10 +482,26 @@ export async function updateExamRegistration(
   id: string,
   updates: Partial<ExamRegistration>
 ): Promise<boolean> {
-  const { error } = await supabase
+  let { error } = await supabase
     .from('exam_registrations')
     .update(updates)
     .eq('id', id);
+
+  // Fallback for missing V2 schema columns
+  if (error && (error.message.includes('column') || error.code === '42703' || error.message.includes('schema cache'))) {
+    console.warn('[db] Installment columns missing in exam_registrations table. Falling back to core columns.');
+    const safeUpdates: any = {};
+    if (updates.payment_status) safeUpdates.payment_status = updates.payment_status;
+    if (updates.exam_fee !== undefined) safeUpdates.exam_fee = updates.exam_fee;
+    if (updates.exam_year !== undefined) safeUpdates.exam_year = updates.exam_year;
+    if (updates.centre) safeUpdates.centre = updates.centre;
+
+    const res = await supabase
+      .from('exam_registrations')
+      .update(safeUpdates)
+      .eq('id', id);
+    error = res.error;
+  }
 
   if (error) throw new Error(`Failed to update exam registration: ${error.message}`);
   return true;
