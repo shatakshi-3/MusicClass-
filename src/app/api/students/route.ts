@@ -68,10 +68,15 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Check for duplicate phone
+    // Check for duplicate student record (same name, phone, and subject)
     const existing = await getStudents({ search: phone });
-    if (existing.some(s => s.phone === phone)) {
-      return NextResponse.json({ error: 'A student with this phone number already exists' }, { status: 409 });
+    const isDuplicate = existing.some(s =>
+      s.name.trim().toLowerCase() === name.trim().toLowerCase() &&
+      s.phone.trim() === phone.trim() &&
+      s.instrument === instrument
+    );
+    if (isDuplicate) {
+      return NextResponse.json({ error: 'A student with this name, phone, and subject already exists' }, { status: 409 });
     }
 
     const student = await createStudent({

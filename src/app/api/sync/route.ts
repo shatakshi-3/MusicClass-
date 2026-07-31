@@ -27,14 +27,17 @@ export async function POST() {
     }
 
     const existingStudents = await getStudents();
-    const existingPhones = new Set(existingStudents.map((s) => s.phone));
+    const existingKeys = new Set(
+      existingStudents.map((s) => `${s.name.trim().toLowerCase()}_${s.phone.trim()}_${s.instrument.trim().toLowerCase()}`)
+    );
 
     let imported = 0;
     let skipped = 0;
     const importErrors: string[] = [];
 
     for (const entry of entries) {
-      if (existingPhones.has(entry.phone)) {
+      const entryKey = `${entry.name.trim().toLowerCase()}_${entry.phone.trim()}_${entry.instrument.trim().toLowerCase()}`;
+      if (existingKeys.has(entryKey)) {
         skipped++;
         continue;
       }
@@ -53,10 +56,10 @@ export async function POST() {
           status: 'active',
         });
 
-        existingPhones.add(entry.phone);
+        existingKeys.add(entryKey);
         imported++;
       } catch (err) {
-        importErrors.push(`Failed to create ${entry.name}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        importErrors.push(`Failed to create ${entry.name} (${entry.instrument}): ${err instanceof Error ? err.message : 'Unknown error'}`);
       }
     }
 

@@ -438,6 +438,15 @@ export async function getExamRegistrations(filters?: {
   const { data, error } = await query;
   if (error) throw new Error(`Failed to fetch exam registrations: ${error.message}`);
 
+  // Fetch all fee payments to check student payments for accurate fallback
+  const { data: allFeePayments } = await supabase.from('fee_payments').select('*');
+  const paymentsByStudent = new Map<string, number>();
+  (allFeePayments ?? []).forEach((p: any) => {
+    const prev = paymentsByStudent.get(p.student_id) || 0;
+    const paid = Number(p.amount_paid || p.amount || 0);
+    paymentsByStudent.set(p.student_id, prev + paid);
+  });
+
   return (data ?? []).map((row: any) => {
     const examYear = row.exam_year as ExamYear;
     const defaultFee = EXAM_FEE_MAP[examYear] || 7500;
@@ -445,15 +454,25 @@ export async function getExamRegistrations(filters?: {
 
     // Smart fallback for amount_paid & remaining_balance
     let amountPaid = Number(row.amount_paid ?? 0);
-    if (row.amount_paid === undefined || row.amount_paid === null) {
+    if (!amountPaid || amountPaid === 0) {
       if (row.payment_status === 'Paid') {
         amountPaid = totalFee;
+      } else {
+        const studentFeePaymentsSum = paymentsByStudent.get(row.student_id) || 0;
+        if (studentFeePaymentsSum > 0) {
+          amountPaid = Math.min(totalFee, studentFeePaymentsSum);
+        } else if (row.payment_status === 'Partially Paid') {
+          amountPaid = Math.round(totalFee / 2); // 50% partial payment fallback
+        }
       }
     }
 
     let remainingBalance = Number(row.remaining_balance ?? Math.max(0, totalFee - amountPaid));
     if (row.payment_status === 'Paid') {
       remainingBalance = 0;
+      amountPaid = totalFee;
+    } else {
+      remainingBalance = Math.max(0, totalFee - amountPaid);
     }
 
     const installmentNumber = Number(row.installment_number ?? (amountPaid > 0 ? 1 : 0));
