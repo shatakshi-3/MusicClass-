@@ -9,15 +9,27 @@ import type { DashboardStats } from '@/lib/types';
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     fetch('/api/dashboard')
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) throw new Error(`Server error: ${res.status}`);
+        return res.json();
+      })
       .then(data => {
-        setStats(data.stats);
+        if (data.stats) {
+          setStats(data.stats);
+        } else {
+          setError(data.error || 'No stats returned');
+        }
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch(err => {
+        console.error('Dashboard fetch error:', err);
+        setError(err.message || 'Failed to load dashboard');
+        setLoading(false);
+      });
   }, []);
 
   const fmt = (n: number) => '₹' + n.toLocaleString('en-IN');
@@ -28,6 +40,12 @@ export default function DashboardPage() {
         <h2 className="page-title">Dashboard</h2>
         <p className="page-subtitle">Overview of your music class</p>
       </div>
+
+      {error && (
+        <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '12px', padding: '16px', marginBottom: '20px', color: '#ef4444' }}>
+          <strong>Dashboard Error:</strong> {error}. Please check your Supabase connection and try refreshing.
+        </div>
+      )}
 
       {/* Row 1: Student Stats */}
       <div className="stat-grid">

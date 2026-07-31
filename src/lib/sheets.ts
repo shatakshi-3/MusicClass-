@@ -82,16 +82,45 @@ export async function fetchFormResponses(): Promise<{
     throw new Error('GOOGLE_SHEET_CSV_URL is not configured');
   }
 
+  // Fetch with explicit redirect following
+  let csvText = '';
   const response = await fetch(SHEET_CSV_URL, {
     cache: 'no-store',
+    redirect: 'follow',
   });
 
   if (!response.ok) {
     throw new Error(`Failed to fetch sheet: ${response.status} ${response.statusText}`);
   }
 
-  const csvText = await response.text();
-  const lines = csvText.split('\n').filter((line) => line.trim().length > 0);
+  const responseText = await response.text();
+
+  // Check if we got HTML (redirect page) instead of CSV
+  if (responseText.trim().startsWith('<')) {
+    // Got HTML redirect — extract the redirect URL from href and re-fetch
+    const locationMatch = responseText.match(/href="([^"]+)"/);
+    if (locationMatch) {
+      const redirectUrl = locationMatch[1].replace(/&amp;/g, '&');
+      const redirectResponse = await fetch(redirectUrl, { cache: 'no-store', redirect: 'follow' });
+      if (!redirectResponse.ok) {
+        throw new Error(`Failed to fetch sheet after redirect: ${redirectResponse.status}`);
+      }
+      csvText = await redirectResponse.text();
+    } else {
+      throw new Error('Google Sheet returned HTML instead of CSV. Make sure the sheet is published to web as CSV.');
+    }
+  } else {
+    csvText = responseText;
+  }
+
+  // Split lines, filter out completely empty rows
+  const lines = csvText.split('\n').filter((line) => {
+    const trimmed = line.trim();
+    if (!trimmed) return false;
+    // Skip rows that are all commas (empty CSV row like ",,,,,,,")
+    if (trimmed.replace(/,/g, '').trim() === '') return false;
+    return true;
+  });
 
   if (lines.length < 2) {
     return { entries: [], errors: [] };

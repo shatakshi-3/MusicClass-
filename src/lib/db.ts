@@ -47,7 +47,8 @@ export async function getStudentById(id: string): Promise<Student | undefined> {
 }
 
 export async function createStudent(data: Omit<Student, 'id' | 'created_at'>): Promise<Student> {
-  const { data: student, error } = await supabase
+  // Try with all columns first (including V2 columns: student_type, exam_year)
+  let { data: student, error } = await supabase
     .from('students')
     .insert({
       name: data.name,
@@ -64,6 +65,28 @@ export async function createStudent(data: Omit<Student, 'id' | 'created_at'>): P
     })
     .select()
     .single();
+
+  // Fallback: if V2 columns (student_type, exam_year) don't exist yet, insert without them
+  if (error && (error.message.includes('column') || error.code === '42703')) {
+    console.warn('[db] V2 columns missing in students table, inserting without student_type/exam_year');
+    const fallback = await supabase
+      .from('students')
+      .insert({
+        name: data.name,
+        phone: data.phone,
+        age: data.age,
+        parents_name: data.parents_name,
+        instrument: data.instrument,
+        centre: data.centre,
+        class_timing: data.class_timing,
+        payment_type: data.payment_type || 'REGULAR',
+        status: data.status || 'active',
+      })
+      .select()
+      .single();
+    student = fallback.data;
+    error = fallback.error;
+  }
 
   if (error) throw new Error(`Failed to create student: ${error.message}`);
   return student as Student;
@@ -212,7 +235,37 @@ export async function getFeePayments(filters?: {
 
   query = query.order('payment_date', { ascending: false });
 
-  const { data, error } = await query;
+  let { data, error } = await query;
+
+  // Fallback: if V2 columns don't exist in students table, retry without them
+  if (error && (error.message.includes('column') || error.code === '42703')) {
+    console.warn('[db] V2 columns missing in students table for join, retrying without student_type/exam_year');
+    let fallbackQuery = supabase
+      .from('fee_payments')
+      .select(`
+        *,
+        students!inner (
+          name,
+          phone,
+          instrument,
+          centre,
+          payment_type
+        )
+      `);
+
+    if (filters?.student_id) fallbackQuery = fallbackQuery.eq('student_id', filters.student_id);
+    if (filters?.payment_type) fallbackQuery = fallbackQuery.eq('payment_type', filters.payment_type);
+    if (filters?.status) fallbackQuery = fallbackQuery.eq('status', filters.status);
+    if (filters?.centre) fallbackQuery = fallbackQuery.eq('students.centre', filters.centre);
+    if (filters?.instrument) fallbackQuery = fallbackQuery.eq('students.instrument', filters.instrument);
+
+    fallbackQuery = fallbackQuery.order('payment_date', { ascending: false });
+
+    const fallbackResult = await fallbackQuery;
+    data = fallbackResult.data;
+    error = fallbackResult.error;
+  }
+
   if (error) throw new Error(`Failed to fetch fee payments: ${error.message}`);
 
   // Transform the joined data to match the expected flat format with smart fallbacks
