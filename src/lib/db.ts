@@ -606,14 +606,11 @@ export async function deleteExamRegistration(id: string): Promise<boolean> {
 // ========================
 
 export async function getDashboardStats(): Promise<DashboardStats> {
-  // Fetch all active students
-  const { data: activeStudents, error: studentsErr } = await supabase
-    .from('students')
-    .select('*')
-    .eq('status', 'active');
-
-  if (studentsErr) throw new Error(`Failed to fetch students: ${studentsErr.message}`);
-  const students = (activeStudents ?? []) as Student[];
+  const [students, payments, regs] = await Promise.all([
+    getStudents({ status: 'active' }),
+    getFeePayments(),
+    getExamRegistrations(),
+  ]);
 
   // Students by centre
   const studentsByCentre: Record<string, number> = {};
@@ -630,9 +627,6 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   // Monthly vs Exam students
   const monthlyStudents = students.filter(s => s.student_type === 'MONTHLY').length;
   const examStudents = students.filter(s => s.student_type === 'EXAM').length;
-
-  // Fetch all fee payments with joined student info and smart fallbacks
-  const payments = await getFeePayments();
 
   // Total collected (all time)
   const totalCollected = payments.reduce((sum, p) => sum + Number(p.amount_paid || 0), 0);
@@ -659,7 +653,6 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     : 0;
 
   // Exam stats
-  const regs = await getExamRegistrations();
 
   const examFeesCollected = regs.reduce((sum, r) => sum + Number(r.amount_paid || 0), 0);
   const examFeesPending = regs.reduce((sum, r) => sum + Number(r.remaining_balance || 0), 0);
